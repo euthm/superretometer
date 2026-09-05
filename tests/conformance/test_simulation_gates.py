@@ -11,7 +11,7 @@ from cognitive_harness.model.ko import (
     SimulationGateReport,
 )
 from cognitive_harness.storage.inmemory import InMemoryStorage
-from cognitive_harness.analysis.warrant_analyzer import WarrantAnalyzer
+from cognitive_harness.analysis.warrant_analyzer import WarrantAnalyzer, WarrantStatus
 from cognitive_harness.analysis.simulation_gate_policy import SimulationGatePolicy
 
 
@@ -553,3 +553,74 @@ def test_valid_invariant(storage):
     ))
     report = policy.evaluate_gates("claim-good-inv")
     assert report.falsifiability.status == GateStatus.PASS, f"{report.falsifiability.reason}"
+
+# ================================================================
+# TEST 14: CONDITIONALLY_WARRANTED -> Reality UNKNOWN
+# ================================================================
+
+def test_conditional_warrant_reality_unknown(storage):
+    """An independently ungrounded carrying assumption (placeholder UA)
+    yields CONDITIONALLY_WARRANTED in WarrantAnalyzer, which maps to
+    Reality UNKNOWN in SimulationGatePolicy. Not design-bearing.
+
+    This is the v0.6.2 semantic correction:
+    WARRANTED -> PASS, UNWARRANTED -> BLOCK, CONDITIONALLY_WARRANTED -> UNKNOWN.
+    """
+    policy = SimulationGatePolicy(storage)
+    analyzer = WarrantAnalyzer(storage)
+
+    prov = {
+        "result_artifact": "/tmp/placeholder.csv", "result_sha256": "ph123",
+        "run_id": "run-ph", "model_id": "model-ph",
+        "parameter_set_id": "params-ph",
+        "source_path": "m.mo", "source_commit": "cPH",
+    }
+    scope_decl = {
+        "modeled_domain": "thermal", "system_boundary": "component-level",
+        "included_components": ["substrate"], "excluded_components": [],
+        "allowed_claim_classes": ["thermal"], "disallowed_claim_classes": [],
+    }
+    vals = [FalsifiableValidator(
+        description="Placeholder check",
+        what_would_falsify="Value outside tolerance",
+        passes=True, observation="Within tolerance",
+    )]
+    storage.create_ko(mk_support("run-ph", "Run", TruthCategory.MODEL_DERIVED))
+    storage.create_ko(mk_support("model-ph", "Model", TruthCategory.MODEL_DERIVED))
+    # A grounded evidence KO
+    storage.create_ko(KnowledgeObject(
+        id="cond-ev-grounded", type=KOType.EVIDENCE_ITEM, title="Grounded thermal data",
+        content="", truth_category=TruthCategory.SOURCED_MATERIAL_DATA,
+        epistemic_status=EpistemicStatus.VALIDATED, confidence=ConfidenceLevel.HIGH,
+        provenance=Provenance(source="datasheet", author="supplier", independent=True),
+        scope="component-level",
+    ))
+    # An ungrounded assumption that carries the claim
+    storage.create_ko(KnowledgeObject(
+        id="cond-assumption", type=KOType.HYPOTHESIS, title="UA_loss = 4.0 (placeholder)",
+        content="", truth_category=TruthCategory.ASSUMPTION,
+        epistemic_status=EpistemicStatus.TENTATIVE, confidence=ConfidenceLevel.LOW,
+        provenance=Provenance(source="model-placeholder", author="eng", independent=False),
+        scope="component-level",
+    ))
+    storage.create_ko(mk_sim_claim(
+        "claim-conditional", "Component thermal with placeholder UA",
+        scope="component-level", prov=prov, scope_decl=scope_decl,
+        validators=vals,
+        relations=[
+            Relation(to="cond-ev-grounded", type=RelationType.SUPPORTS),
+            Relation(to="cond-assumption", type=RelationType.DEPENDS_ON),
+        ],
+    ))
+
+    # First verify warrant status is CONDITIONALLY_WARRANTED
+    warrant = analyzer.compute_warrant("claim-conditional")
+    assert warrant.warrant_status == WarrantStatus.CONDITIONALLY_WARRANTED, \
+        f"Expected CONDITIONALLY_WARRANTED, got {warrant.warrant_status.value}"
+
+    # Now evaluate gates — Reality must be UNKNOWN
+    report = policy.evaluate_gates("claim-conditional")
+    assert report.reality.status == GateStatus.UNKNOWN, \
+        f"Expected Reality UNKNOWN for CONDITIONALLY_WARRANTED, got {report.reality.status.value}"
+    assert not report.design_bearing, \
+        "CONDITIONALLY_WARRANTED must not be design-bearing"

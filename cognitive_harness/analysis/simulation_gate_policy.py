@@ -198,8 +198,8 @@ class SimulationGatePolicy:
         if warrant.warrant_status == WarrantStatus.CONDITIONALLY_WARRANTED:
             conditions = warrant.conditional_assumptions
             return GateResult(
-                "reality", GateStatus.PASS,
-                f"Warranted with conditions: {conditions}",
+                "reality", GateStatus.UNKNOWN,
+                f"Explicitly assumed, not independently grounded: {conditions}",
                 evidence=[str(c) for c in conditions],
             )
         if warrant.warrant_status == WarrantStatus.UNWARRANTED:
