@@ -49,3 +49,7 @@
 **Gate BLOCK**: The gate's condition is not met. The result may be informative but not design-bearing. Distinct from execution failure.
 
 **Gate UNKNOWN**: Insufficient information to evaluate. Treated conservatively as BLOCK for design-bearing purposes.
+
+## Gate Status Canonical Definition
+
+PASS means independently grounded. UNKNOWN means explicitly assumed but not independently grounded. BLOCK means structurally or physically unwarranted. Only PASS can contribute to a design-bearing verdict.
