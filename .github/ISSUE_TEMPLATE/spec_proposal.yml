@@ -1,0 +1,40 @@
+name: Specification Proposal
+description: Propose a change to the Cognitive Harness specification.
+labels: ["spec-change"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Specification changes require careful review. Please describe the problem, proposed change, and backward compatibility impact.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this specification change address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed semantic change
+      description: Describe the proposed change precisely.
+    validations:
+      required: true
+  - type: textarea
+    id: examples
+    attributes:
+      label: Examples / counterexamples
+      description: Graph configurations that demonstrate the change.
+      render: python
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Backward compatibility
+      description: Is this backward compatible? What breaks?
+    validations:
+      required: true
+  - type: textarea
+    id: conformance
+    attributes:
+      label: Conformance test impact
+      description: Which conformance tests need to change? Why?

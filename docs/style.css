@@ -1,0 +1,205 @@
+/* ── Reset & base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #fafafa;
+  --fg: #1a1a1a;
+  --muted: #5a5a5a;
+  --accent: #0b5cff;
+  --accent-dim: #0840a8;
+  --border: #e0e0e0;
+  --card-bg: #ffffff;
+  --mono: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+  --max-w: 780px;
+}
+
+html { font-size: 17px; scroll-behavior: smooth; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Layout ───────────────────────────────────────────────── */
+.wrap {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+/* ── Hero ─────────────────────────────────────────────────── */
+.hero {
+  padding: 5rem 0 3rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.hero h1 {
+  font-size: 2.6rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin-bottom: 0.6rem;
+}
+
+.hero .subtitle {
+  font-size: 1.15rem;
+  color: var(--muted);
+  font-weight: 400;
+  max-width: 560px;
+  line-height: 1.55;
+}
+
+.hero .tagline {
+  margin-top: 1.8rem;
+  font-size: 1.05rem;
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--muted);
+  border-left: 3px solid var(--accent);
+  padding-left: 1rem;
+}
+
+/* ── Sections ─────────────────────────────────────────────── */
+section { padding: 3rem 0; }
+
+section h2 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin-bottom: 1.2rem;
+  letter-spacing: -0.01em;
+}
+
+section p { margin-bottom: 1rem; }
+
+/* ── Stack diagram ────────────────────────────────────────── */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 2rem 0;
+}
+
+.stack-item {
+  padding: 0.65rem 1rem;
+  border-left: 3px solid var(--border);
+  background: var(--card-bg);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.stack-item + .stack-item {
+  border-top: 1px solid var(--border);
+}
+
+.stack-item.core {
+  border-left-color: var(--accent);
+  background: #f0f4ff;
+}
+
+.arrow {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 0.15rem 0;
+}
+
+/* ── Principle box ────────────────────────────────────────── */
+.principle {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1.5rem 1.8rem;
+  margin: 1.5rem 0;
+  font-family: var(--serif);
+  font-size: 1.1rem;
+  line-height: 1.5;
+}
+
+/* ── Lineage cards ────────────────────────────────────────── */
+.lineage-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.2rem;
+  margin: 1.5rem 0;
+}
+
+.lineage-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1.4rem 1.6rem;
+}
+
+.lineage-card h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.lineage-card p {
+  font-size: 0.92rem;
+  color: var(--muted);
+  line-height: 1.55;
+  margin-bottom: 0.5rem;
+}
+
+.lineage-card a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.lineage-card a:hover { text-decoration: underline; }
+
+.lineage-card .ref {
+  font-size: 0.82rem;
+  font-family: var(--mono);
+  color: var(--muted);
+}
+
+/* ── Contributions list ───────────────────────────────────── */
+.contrib-list {
+  list-style: none;
+  padding: 0;
+}
+
+.contrib-list li {
+  padding: 0.4rem 0 0.4rem 1.2rem;
+  position: relative;
+  font-size: 0.95rem;
+}
+
+.contrib-list li::before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+}
+
+/* ── Footer ───────────────────────────────────────────────── */
+footer {
+  padding: 2rem 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+footer a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* ── Links ────────────────────────────────────────────────── */
+a { color: var(--accent); }
+
+/* ── Responsive ───────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .hero { padding: 3rem 0 2rem; }
+  .hero h1 { font-size: 2rem; }
+  section { padding: 2rem 0; }
+}

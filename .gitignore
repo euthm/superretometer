@@ -1,9 +1,42 @@
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 *.pyo
 .env
-.env.local
+.env.*
 *.egg-info/
 dist/
 build/
 .venv/
+venv/
+.eggs/
+*.egg/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+.hypothesis/
+.pytest_cache/
+coverage.xml
+.coverage
+htmlcov/
+
+# Generated
+*.mat
+*.xml
+*.csv
+
+# Credentials (extra safety)
+credentials.json
+service-account*.json
+*.pem
+*.key

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Superretometer — Cognitive Harness Reference Engine</title>
+  <meta name="description" content="The reference engine for the Cognitive Harness OpenSpec — structural reasoning, provenance and epistemic warrant for autonomous engineering agents.">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ── Hero ──────────────────────────────────────────────── -->
+<header class="hero">
+  <div class="wrap">
+    <h1>Superretometer</h1>
+    <p class="subtitle">
+      Know not only what follows.<br>
+      Know <em>why</em> it follows.
+    </p>
+    <p class="tagline">
+      The reference engine for the Cognitive Harness OpenSpec —
+      structural reasoning, provenance and epistemic warrant
+      for autonomous engineering agents.
+    </p>
+    <div class="principle" style="margin-top: 2.5rem;">
+      <strong>A check that cannot fail is not evidence.</strong>
+    </div>
+  </div>
+</header>
+
+<!-- ── Reasoning Stack ──────────────────────────────────── -->
+<section>
+  <div class="wrap">
+    <h2>Reasoning Stack</h2>
+    <p>
+      Agent interoperability has seven layers. Cognitive Harness addresses
+      the middle four — where structural justification lives.
+    </p>
+    <div class="stack">
+      <div class="stack-item">Identity</div>
+      <div class="arrow">↓</div>
+      <div class="stack-item">Semantics</div>
+      <div class="arrow">↓</div>
+      <div class="stack-item core">Provenance</div>
+      <div class="arrow">↓</div>
+      <div class="stack-item core">Warrant</div>
+      <div class="arrow">↓</div>
+      <div class="stack-item core">Reasoning</div>
+      <div class="arrow">↓</div>
+      <div class="stack-item core">Impact</div>
+      <div class="arrow">↓</div>
+      <div class="stack-item">Action</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── What It Does ─────────────────────────────────────── -->
+<section>
+  <div class="wrap">
+    <h2>What It Does</h2>
+    <ul class="contrib-list">
+      <li>Computes <strong>structural epistemic warrant</strong> from provenance graph topology — not keyword matching, not confidence scores</li>
+      <li>Detects <strong>structural anti-patterns</strong>: circular justification, tautological validation, calibrated-to-conclusion, inert parameters, physically unrealizable claims, unsupported domain transfers</li>
+      <li>Traces evidence to <strong>independent provenance roots</strong> — evidence count is not independent evidence</li>
+      <li>Manages <strong>supersession and impact propagation</strong> — when knowledge changes, downstream dependents are flagged</li>
+      <li>Supports <strong>Threads of Reasoning</strong> with viewpoint traversal (conceptual → functional → realization → application)</li>
+      <li>Provides an <strong>MCP transport</strong> for integration with agent runtimes</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ── Lineage ──────────────────────────────────────────── -->
+<section>
+  <div class="wrap">
+    <h2>Lineage</h2>
+    <p>
+      Superretometer and the Cognitive Harness specification build on several
+      traditions in reasoning, epistemology and agent orchestration.
+    </p>
+
+    <div class="lineage-grid">
+
+      <!-- Emergent Company -->
+      <div class="lineage-card">
+        <h3>Emergent Company</h3>
+        <p>
+          The immediate technical origin of this work lies in research around
+          <strong>emergent.memory</strong>, the <strong>EPF</strong> (Emergent Product Framework),
+          and collaboration with Nikolai and Maciej at Emergent Company.
+          Persistent graph memory and structured execution/planning formed the
+          practical starting point from which the Cognitive Harness specification
+          and Superretometer reference engine developed.
+        </p>
+        <p>
+          Later work is independent. We do not attribute subsequent development
+          to Emergent Company nor imply endorsement.
+        </p>
+      </div>
+
+      <!-- Gerrit Muller -->
+      <div class="lineage-card">
+        <h3>Gerrit Müller — CAFCR</h3>
+        <p>
+          Müller's <em>A Cognitive Approach for Flexibly Coordinating Reasoning</em>
+          (CAFCR, 2004) introduced Lines of Reasoning and viewpoint-based traversal.
+          The Thread model in Cognitive Harness is a computational instantiation
+          of CAFCR threads, adapted for engineering provenance and warrant analysis.
+        </p>
+        <p>
+          Müller's later work on CEMA/CESA and viewpoint hopping further informed
+          the structure of explicit engineering reasoning threads.
+        </p>
+        <p class="ref">
+          <a href="https://gaudisite.nl" target="_blank" rel="noopener">gaudisite.nl</a>
+        </p>
+      </div>
+
+      <!-- EPR -->
+      <div class="lineage-card">
+        <h3>Einstein, Podolsky & Rosen — 1935</h3>
+        <p>
+          The EPR criterion for <em>"elements of physical reality"</em> inspired
+          the warrant concept: a description that produces plausible results does
+          not guarantee that the elements carrying a conclusion possess independently
+          grounded counterparts.
+        </p>
+        <p>
+          Cognitive Harness adapts this into an engineering epistemic criterion:
+          a conclusion is warranted only if its premises are independently grounded.
+          This is an analogy, not an implementation of quantum mechanics.
+        </p>
+        <p class="ref">
+          <a href="https://en.wikipedia.org/wiki/EPR_paradox" target="_blank" rel="noopener">EPR paradox — Wikipedia</a>
+        </p>
+      </div>
+
+      <!-- Harness-of-Harness -->
+      <div class="lineage-card">
+        <h3>Harness-of-Harness</h3>
+        <p>
+          HoH contributed ideas around persistent multi-session agent work,
+          state preservation across reasoning trajectories, progressive disclosure,
+          and long-running orchestration.
+        </p>
+        <p>
+          Cognitive Harness extends this direction toward explicit engineering
+          reasoning with provenance graphs and structural warrant computation.
+        </p>
+      </div>
+
+      <!-- Own contributions -->
+      <div class="lineage-card">
+        <h3>Cognitive Harness / Superretometer — Own Contributions</h3>
+        <p>The project's own synthesis and original work:</p>
+        <ul class="contrib-list">
+          <li>Structural epistemic warrant over provenance graphs</li>
+          <li>Independent provenance-root analysis — evidence count ≠ independent evidence</li>
+          <li>Six structural epistemic anti-patterns derived from graph topology</li>
+          <li>Supersession with transitive impact propagation</li>
+          <li>Automated reassessment when upstream knowledge changes</li>
+          <li>Integration of systems-engineering Threads of Reasoning with provenance/warrant</li>
+          <li>Implementation-independent Cognitive Harness OpenSpec</li>
+          <li>Superretometer reference engine with MCP transport</li>
+        </ul>
+      </div>
+
+    </div>
+
+    <p style="font-size: 0.88rem; color: var(--muted); margin-top: 1.5rem;">
+      Superretometer is inspired by and builds on these traditions. It is not
+      affiliated with or endorsed by the original authors or organizations.
+    </p>
+  </div>
+</section>
+
+<!-- ── Get Started ──────────────────────────────────────── -->
+<section>
+  <div class="wrap">
+    <h2>Get Started</h2>
+    <p>
+      The specification and reference implementation are on GitHub.
+    </p>
+    <p>
+      <a href="https://github.com/TechHappensEur/superretometer" target="_blank" rel="noopener">
+        github.com/TechHappensEur/superretometer
+      </a>
+    </p>
+    <p style="margin-top: 1rem; font-size: 0.92rem; color: var(--muted);">
+      Specification: <code>spec/</code> &nbsp;·&nbsp;
+      Reference implementation: <code>cognitive_harness/</code> &nbsp;·&nbsp;
+      Examples: <code>examples/</code> &nbsp;·&nbsp;
+      Tests: <code>tests/</code>
+    </p>
+  </div>
+</section>
+
+<!-- ── Footer ───────────────────────────────────────────── -->
+<footer>
+  <div class="wrap">
+    <p>
+      Apache-2.0 &nbsp;·&nbsp;
+      <a href="https://github.com/TechHappensEur/superretometer">GitHub</a>
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>

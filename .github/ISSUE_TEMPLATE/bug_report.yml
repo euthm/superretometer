@@ -1,0 +1,45 @@
+name: Bug Report
+description: Report a bug in the implementation or specification.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting. Please indicate whether this is an implementation bug or a specification issue.
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Implementation bug
+        - Specification issue
+        - Test failure
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What is the bug? Be specific.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Minimal reproducible example or test case.
+      render: python
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Git commit SHA or version tag.

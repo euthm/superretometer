@@ -1,0 +1,21 @@
+# Superretometer CODEOWNERS
+#
+# Maintainer placeholders — replace with actual GitHub handles before enabling
+# "Require review from Code Owners" in branch protection rules.
+#
+# Pattern: <path> <owner1> <owner2> ...
+
+# Specification — normative; requires maintainer review
+/spec/ @maintainers
+
+# Conformance tests — defines behavioral contract
+/tests/conformance/ @maintainers
+
+# Reference implementation
+/cognitive_harness/ @maintainers
+
+# Transport layer
+/transports/ @maintainers
+
+# Website
+/docs/ @maintainers
