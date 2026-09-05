@@ -74,7 +74,7 @@ Each gate evaluates independently. Status: PASS, BLOCK, or UNKNOWN. BLOCK is an 
 
 **Gate 2 — Scope (N-SCOPE):** A simulation result may only warrant claims within the explicitly declared physical scope. Scope is a warrant boundary, not metadata. A component model cannot support a system-level claim.
 
-**Gate 3 — Reality (N-REALITY):** Quantities carrying the claim must have independent grounding. Delegates to `WarrantAnalyzer`. WARRANTED → PASS, UNWARRANTED → BLOCK, CONDITIONALLY_WARRANTED → PASS with conditions.
+**Gate 3 — Reality (N-REALITY):** Quantities carrying the claim must have independent grounding. Delegates to `WarrantAnalyzer`. WARRANTED → PASS, UNWARRANTED → BLOCK, CONDITIONALLY_WARRANTED → UNKNOWN (explicitly assumed but not independently grounded).
 
 **Gate 4 — Falsifiability (N-INVARIANT):** Validators must declare what would falsify them. Invariants must be valid for the declared system boundary, not just computable.
 
