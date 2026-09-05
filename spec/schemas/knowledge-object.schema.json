@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cognitive-harness.org/schemas/knowledge-object.json",
+  "title": "KnowledgeObject",
+  "description": "The atomic unit of structured knowledge in Cognitive Harness",
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "title"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable logical identifier (independent of storage backend)"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "requirement",
+        "observation",
+        "hypothesis",
+        "decision",
+        "constraint",
+        "model_result",
+        "specification",
+        "finding",
+        "evidence",
+        "conclusion",
+        "domain_mapping"
+      ],
+      "description": "Knowledge object type"
+    },
+    "title": {
+      "type": "string"
+    },
+    "content": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "truth_category": {
+      "type": "string",
+      "enum": [
+        "physical_observation",
+        "sourced_material_data",
+        "conservation_law",
+        "documented_decision",
+        "assumption",
+        "fitted_parameter",
+        "model_derived",
+        "validation_result",
+        "mathematical_identity"
+      ]
+    },
+    "viewpoint_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "epistemic_status": {
+      "type": "string",
+      "enum": [
+        "proposed",
+        "tentative",
+        "validated",
+        "canonical",
+        "superseded",
+        "invalidated"
+      ]
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "speculative",
+        "low",
+        "medium",
+        "high",
+        "certain"
+      ]
+    },
+    "scope": {
+      "type": "string"
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "valid_from": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "valid_to": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "supersedes_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "superseded_by_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidence_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tension_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "$ref": "relation.schema.json"
+      }
+    },
+    "provenance": {
+      "$ref": "provenance.schema.json"
+    },
+    "derivation": {
+      "$ref": "derivation.schema.json"
+    },
+    "validators": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "what_would_falsify": {
+            "type": "string"
+          },
+          "passes": {
+            "type": "boolean"
+          },
+          "observation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "what_would_falsify"
+        ]
+      }
+    },
+    "anti_patterns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "calibrated_to_conclusion",
+          "tautological_validation",
+          "inert_parameter",
+          "physically_unrealizable",
+          "unsupported_transfer",
+          "circular_dependency"
+        ]
+      }
+    },
+    "review_required": {
+      "type": "boolean"
+    },
+    "review_reason": {
+      "type": "string"
+    }
+  }
+}

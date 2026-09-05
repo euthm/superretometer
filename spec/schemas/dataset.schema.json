@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cognitive-harness.org/schemas/dataset.json",
+  "title": "Dataset",
+  "type": "object",
+  "required": [
+    "id",
+    "name"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "source_ko_id": {
+      "type": "string"
+    },
+    "observation_count": {
+      "type": "integer"
+    },
+    "derived_from_dataset_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

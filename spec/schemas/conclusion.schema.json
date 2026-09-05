@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cognitive-harness.org/schemas/conclusion.json",
+  "title": "Conclusion",
+  "description": "A Conclusion is a KnowledgeObject with type='conclusion'",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "knowledge-object.schema.json"
+    }
+  ],
+  "properties": {
+    "type": {
+      "const": "conclusion"
+    },
+    "warrant_status": {
+      "type": "string",
+      "enum": [
+        "warranted",
+        "conditionally_warranted",
+        "unwarranted",
+        "unresolved"
+      ],
+      "description": "Derived \u2014 not stored"
+    }
+  }
+}

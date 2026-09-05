@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cognitive-harness.org/schemas/thread.json",
+  "title": "Thread",
+  "type": "object",
+  "required": [
+    "id",
+    "origin_tension_id",
+    "originating_question"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "origin_tension_id": {
+      "type": "string"
+    },
+    "originating_question": {
+      "type": "string"
+    },
+    "reasoning_mode": {
+      "type": "string",
+      "enum": [
+        "forward",
+        "backward",
+        "abductive"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "completed",
+        "deferred",
+        "superseded"
+      ]
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "examine",
+              "hypothesize",
+              "validate",
+              "conclude"
+            ]
+          },
+          "viewpoint": {
+            "type": "string",
+            "enum": [
+              "conceptual",
+              "functional",
+              "realization",
+              "application"
+            ]
+          },
+          "claim": {
+            "type": "string"
+          },
+          "input_ko_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "output_ko_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence_used": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assumptions_used": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "transition_reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "viewpoint_sequence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "conclusion": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "decision",
+            "hypothesis",
+            "deferred"
+          ]
+        },
+        "target_ko_id": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

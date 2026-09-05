@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cognitive-harness.org/schemas/relation.json",
+  "title": "Relation",
+  "type": "object",
+  "required": [
+    "to",
+    "type"
+  ],
+  "properties": {
+    "to": {
+      "type": "string",
+      "description": "Target KO logical ID"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "supports",
+        "depends_on",
+        "supersedes",
+        "derived_from",
+        "contradicts",
+        "validated_by",
+        "tested_against",
+        "fitted_on",
+        "transferred_from",
+        "informs",
+        "refutes"
+      ]
+    }
+  }
+}

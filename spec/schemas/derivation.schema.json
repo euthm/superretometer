@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cognitive-harness.org/schemas/derivation.json",
+  "title": "DerivationRelation",
+  "type": "object",
+  "required": [
+    "derivation_type"
+  ],
+  "properties": {
+    "derivation_type": {
+      "type": "string",
+      "enum": [
+        "fitted",
+        "transferred",
+        "validated",
+        "mathematical"
+      ]
+    },
+    "upstream_ko_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "training_dataset_id": {
+      "type": "string"
+    },
+    "test_dataset_id": {
+      "type": "string"
+    },
+    "domain_source_ko_id": {
+      "type": "string"
+    },
+    "domain_mapping_ko_id": {
+      "type": "string"
+    }
+  }
+}

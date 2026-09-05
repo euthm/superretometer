@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cognitive-harness.org/schemas/tension.json",
+  "title": "Tension",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "ko_ids"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "ko_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "viewpoint_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "investigating",
+        "contested",
+        "resolved"
+      ]
+    },
+    "thread_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "resolution_ko_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}
