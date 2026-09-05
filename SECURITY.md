@@ -3,7 +3,7 @@
 ## Reporting a Vulnerability
 
 Report security issues privately to the repository maintainers through the
-[Security Advisories](https://github.com/TechHappensEur/superretometer/security/advisories/new) page.
+[Security Advisories](https://github.com/euthm/superretometer/security/advisories/new) page.
 
 ## Scope
 
