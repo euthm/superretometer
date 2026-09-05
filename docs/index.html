@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Superretometer — Cognitive Harness Reference Engine</title>
-  <meta name="description" content="The reference engine for the Cognitive Harness OpenSpec — structural reasoning, provenance and epistemic warrant for autonomous engineering agents.">
+  <title>Superretometer — Cognitive Harness for Reliable Reasoning &amp; Engineering</title>
+  <meta name="description" content="A plausible answer is not the same as a grounded answer. Superretometer makes the difference visible and testable.">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -15,13 +15,13 @@
   <div class="wrap">
     <h1>Superretometer</h1>
     <p class="subtitle">
-      Know not only what follows.<br>
-      Know <em>why</em> it follows.
+      A plausible answer is not the same as a grounded answer.
     </p>
     <p class="tagline">
-      The reference engine for the Cognitive Harness OpenSpec —
-      structural reasoning, provenance and epistemic warrant
-      for autonomous engineering agents.
+      Superretometer is a cognitive harness that makes reasoning visible,
+      traceable, and testable — so you can ask:
+      <em>what does this conclusion depend on, and what makes those
+      dependencies real?</em>
     </p>
     <div class="principle" style="margin-top: 2.5rem;">
       <strong>A check that cannot fail is not evidence.</strong>
@@ -29,28 +29,80 @@
   </div>
 </header>
 
-<!-- ── Reasoning Stack ──────────────────────────────────── -->
+<!-- ── The Problem ──────────────────────────────────────── -->
 <section>
   <div class="wrap">
-    <h2>Reasoning Stack</h2>
+    <h2>The Problem</h2>
     <p>
-      Agent interoperability has seven layers. Cognitive Harness addresses
-      the middle four — where structural justification lives.
+      An AI system or engineering simulation can produce a result that looks
+      correct. The numbers close. The chain of reasoning appears sound.
+      Yet the conclusion rests on premises that have no independent
+      grounding in the physical world.
     </p>
-    <div class="stack">
-      <div class="stack-item">Identity</div>
-      <div class="arrow">↓</div>
-      <div class="stack-item">Semantics</div>
-      <div class="arrow">↓</div>
-      <div class="stack-item core">Provenance</div>
-      <div class="arrow">↓</div>
-      <div class="stack-item core">Warrant</div>
-      <div class="arrow">↓</div>
-      <div class="stack-item core">Reasoning</div>
-      <div class="arrow">↓</div>
-      <div class="stack-item core">Impact</div>
-      <div class="arrow">↓</div>
-      <div class="stack-item">Action</div>
+    <p>
+      Consider a reasoning chain from an engineering model:
+    </p>
+    <div class="reasoning-chain">
+      design decision &rarr; geometry &rarr; inductance &rarr; current
+      &rarr; flux &rarr; torque &rarr; equilibrium &rarr; RPM
+    </div>
+    <p>
+      The chain is structurally valid. But which elements are
+      <em>independently grounded</em>?
+    </p>
+    <ul class="grounded-list">
+      <li><strong>Material properties</strong> — manufacturer datasheet</li>
+      <li><strong>Geometry</strong> — CAD model or physical measurement</li>
+      <li><strong>Design target</strong> — documented human decision</li>
+      <li><strong>Energy balance</strong> — conservation law</li>
+      <li><strong>Resistance &amp; inductance</strong> — physical measurement</li>
+      <li><strong>Parameter selected merely to make the simulation produce the desired result</strong> — <em>not independently grounded</em></li>
+    </ul>
+    <p>
+      Superretometer makes the last distinction explicit, structural,
+      and computable.
+    </p>
+  </div>
+</section>
+
+<!-- ── Architecture ─────────────────────────────────────── -->
+<section>
+  <div class="wrap">
+    <h2>Architecture</h2>
+    <p>
+      Superretometer harnesses four foundations into a single reasoning
+      and verification loop:
+    </p>
+    <div class="architecture-grid">
+      <div class="arch-card">
+        <h3>REASON</h3>
+        <p>LLM provides the generative reasoning capability — forming hypotheses, traversing domains, constructing candidate chains of justification.</p>
+      </div>
+      <div class="arch-card">
+        <h3>CONTINUITY</h3>
+        <p><a href="#foundations-emergent">Emergent Memory</a> gives persistent storage across sessions: evidence, observations, decisions, and validated knowledge do not decay when the conversation ends.</p>
+      </div>
+      <div class="arch-card">
+        <h3>STRUCTURE + TRACE</h3>
+        <p><a href="#foundations-muller">CAFCR and Lines of Reasoning</a> impose structure on the reasoning chain: each step records claim, viewpoint, and knowledge objects used. The thread becomes auditable and restartable.</p>
+      </div>
+      <div class="arch-card">
+        <h3>REALITY CHECK</h3>
+        <p>Inspired by the <a href="#foundations-epr">EPR completeness criterion</a>: a conclusion is warranted only if the elements carrying it possess independently grounded counterparts. Not a quantum-mechanical claim — an epistemic one.</p>
+      </div>
+    </div>
+    <div class="learning-loop">
+      <span class="loop-step">REASON</span>
+      <span class="loop-arrow">&rarr;</span>
+      <span class="loop-step">TRACE</span>
+      <span class="loop-arrow">&rarr;</span>
+      <span class="loop-step">REALITY CHECK</span>
+      <span class="loop-arrow">&rarr;</span>
+      <span class="loop-step">ACT</span>
+      <span class="loop-arrow">&rarr;</span>
+      <span class="loop-step">MEASURE</span>
+      <span class="loop-arrow">&rarr;</span>
+      <span class="loop-step">UPDATE</span>
     </div>
   </div>
 </section>
@@ -58,118 +110,143 @@
 <!-- ── What It Does ─────────────────────────────────────── -->
 <section>
   <div class="wrap">
-    <h2>What It Does</h2>
+    <h2>What It Computes</h2>
     <ul class="contrib-list">
-      <li>Computes <strong>structural epistemic warrant</strong> from provenance graph topology — not keyword matching, not confidence scores</li>
-      <li>Detects <strong>structural anti-patterns</strong>: circular justification, tautological validation, calibrated-to-conclusion, inert parameters, physically unrealizable claims, unsupported domain transfers</li>
-      <li>Traces evidence to <strong>independent provenance roots</strong> — evidence count is not independent evidence</li>
-      <li>Manages <strong>supersession and impact propagation</strong> — when knowledge changes, downstream dependents are flagged</li>
-      <li>Supports <strong>Threads of Reasoning</strong> with viewpoint traversal (conceptual → functional → realization → application)</li>
-      <li>Provides an <strong>MCP transport</strong> for integration with agent runtimes</li>
+      <li><strong>Structural epistemic warrant</strong> — derived from provenance graph topology, not confidence scores or keyword matching</li>
+      <li><strong>Independent provenance-root analysis</strong> — evidence count &ne; independent evidence</li>
+      <li><strong>Six structural anti-patterns</strong>: circular justification, tautological validation, calibrated-to-conclusion, inert parameters, physically unrealizable claims, unsupported domain transfers</li>
+      <li><strong>Supersession with transitive impact propagation</strong> — when knowledge changes, downstream dependents are flagged</li>
+      <li><strong>Automated reassessment</strong> when upstream grounding is revoked or revised</li>
+      <li><strong>Threads of Reasoning</strong> with viewpoint traversal (conceptual &rarr; functional &rarr; realization &rarr; application)</li>
     </ul>
   </div>
 </section>
 
-<!-- ── Lineage ──────────────────────────────────────────── -->
-<section>
+<!-- ── Foundations / Lineage ────────────────────────────── -->
+<section id="foundations">
   <div class="wrap">
-    <h2>Lineage</h2>
+    <h2>Foundations</h2>
     <p>
-      Superretometer and the Cognitive Harness specification build on several
-      traditions in reasoning, epistemology and agent orchestration.
+      Superretometer builds on four distinct traditions. Each contributes
+      a necessary piece; together they form the harness.
     </p>
 
     <div class="lineage-grid">
 
-      <!-- Emergent Company -->
-      <div class="lineage-card">
-        <h3>Emergent Company</h3>
+      <!-- Emergent Memory + Strategy -->
+      <div class="lineage-card" id="foundations-emergent">
+        <h3>Emergent Memory &amp; Emergent Strategy</h3>
         <p>
-          The immediate technical origin of this work lies in research around
-          <strong>emergent.memory</strong>, the <strong>EPF</strong> (Emergent Product Framework),
-          and collaboration with Nikolai and Maciej at Emergent Company.
-          Persistent graph memory and structured execution/planning formed the
-          practical starting point from which the Cognitive Harness specification
-          and Superretometer reference engine developed.
+          <strong>Emergent Memory</strong> provides the persistent graph
+          backbone: knowledge, evidence, decisions, and observations survive
+          across sessions, failures, and revisions. Without persistence,
+          reasoning cannot accumulate.
         </p>
         <p>
-          Later work is independent. We do not attribute subsequent development
-          to Emergent Company nor imply endorsement.
+          <strong>Emergent Strategy</strong> closes the adaptive loop:
+          <em>act &rarr; observe &rarr; learn &rarr; revise &rarr; act again</em>.
+          It is grounded in practical experience — Nikolai's work building
+          34 companies — and draws inspiration from
+          <em>Ready, Fire, Aim</em> (Robert Chapman, 2008): bias toward
+          action, learn from outcome, iterate.
+        </p>
+        <p>
+          Together they form the cognitive base: reasoning with continuity
+          and adaptive learning.
         </p>
       </div>
 
-      <!-- Gerrit Muller -->
-      <div class="lineage-card">
-        <h3>Gerrit Müller — CAFCR</h3>
+      <!-- Gerrit Muller / CAFCR -->
+      <div class="lineage-card" id="foundations-muller">
+        <h3>Gerrit Müller — CAFCR &amp; Lines of Reasoning</h3>
         <p>
-          Müller's <em>A Cognitive Approach for Flexibly Coordinating Reasoning</em>
-          (CAFCR, 2004) introduced Lines of Reasoning and viewpoint-based traversal.
-          The Thread model in Cognitive Harness is a computational instantiation
-          of CAFCR threads, adapted for engineering provenance and warrant analysis.
+          Müller's <em>CAFCR: A Cognitive Approach for Flexibly Coordinating
+          Reasoning</em> (PhD thesis, University of Twente, 2004) introduced
+          <strong>Lines of Reasoning</strong> and viewpoint-based traversal
+          as a method for structuring complex engineering decisions.
         </p>
         <p>
-          Müller's later work on CEMA/CESA and viewpoint hopping further informed
-          the structure of explicit engineering reasoning threads.
+          Superretometer's Thread model is a computational instantiation of
+          CAFCR threads. Each thread records claims, viewpoints, and the
+          knowledge objects used — making reasoning auditable and restartable.
+        </p>
+        <p>
+          Müller's later work on CEMA/CESA and viewpoint hopping further
+          informed the structure of explicit engineering reasoning threads.
         </p>
         <p class="ref">
-          <a href="https://gaudisite.nl" target="_blank" rel="noopener">gaudisite.nl</a>
+          <a href="https://www.gaudisite.nl/ArchitecturalReasoning.html" target="_blank" rel="noopener">Architectural Reasoning; CAFCR</a>
+          &nbsp;&middot;&nbsp;
+          <a href="https://www.gaudisite.nl/ThesisBook.pdf" target="_blank" rel="noopener">CAFCR Thesis PDF</a>
+          &nbsp;&middot;&nbsp;
+          <a href="https://www.gaudisite.nl/info/ArchitectingMethodOverview.info.html" target="_blank" rel="noopener">Overview of CAFCR and Threads of Reasoning</a>
         </p>
       </div>
 
       <!-- EPR -->
-      <div class="lineage-card">
-        <h3>Einstein, Podolsky & Rosen — 1935</h3>
+      <div class="lineage-card" id="foundations-epr">
+        <h3>Einstein, Podolsky &amp; Rosen — 1935</h3>
         <p>
-          The EPR criterion for <em>"elements of physical reality"</em> inspired
-          the warrant concept: a description that produces plausible results does
-          not guarantee that the elements carrying a conclusion possess independently
-          grounded counterparts.
+          <em>Can Quantum-Mechanical Description of Physical Reality Be
+          Considered Complete?</em> (Physical Review, 47, 777, 1935)
+          established a criterion for completeness: a description is
+          complete only if every element of physical reality has a
+          counterpart in the theory.
         </p>
         <p>
-          Cognitive Harness adapts this into an engineering epistemic criterion:
-          a conclusion is warranted only if its premises are independently grounded.
-          This is an analogy, not an implementation of quantum mechanics.
+          Superretometer adapts this as an <strong>epistemic criterion
+          for engineering reasoning</strong>: a conclusion is warranted
+          only if the quantities and claims carrying it possess
+          independently grounded counterparts outside the model.
+        </p>
+        <p>
+          This is our analogy, not a claim about quantum mechanics.
+          We do not apply quantum physics to engineering problems.
+          We apply the structural question EPR asked about the
+          relationship between description and reality.
         </p>
         <p class="ref">
-          <a href="https://en.wikipedia.org/wiki/EPR_paradox" target="_blank" rel="noopener">EPR paradox — Wikipedia</a>
+          <a href="https://doi.org/10.1103/PhysRev.47.777" target="_blank" rel="noopener">Physical Review 47, 777 (1935) — doi:10.1103/PhysRev.47.777</a>
         </p>
       </div>
 
       <!-- Harness-of-Harness -->
-      <div class="lineage-card">
+      <div class="lineage-card" id="foundations-hoh">
         <h3>Harness-of-Harness</h3>
         <p>
-          HoH contributed ideas around persistent multi-session agent work,
-          state preservation across reasoning trajectories, progressive disclosure,
-          and long-running orchestration.
+          The Harness-of-Harness framework (Yan et al., 2026) provides
+          supporting evidence that structuring a harness around an LLM
+          matters — for state preservation, progressive disclosure, and
+          long-running orchestration.
         </p>
         <p>
-          Cognitive Harness extends this direction toward explicit engineering
-          reasoning with provenance graphs and structural warrant computation.
+          It is not the conceptual origin of Superretometer. It
+          validates the architectural direction.
         </p>
-      </div>
-
-      <!-- Own contributions -->
-      <div class="lineage-card">
-        <h3>Cognitive Harness / Superretometer — Own Contributions</h3>
-        <p>The project's own synthesis and original work:</p>
-        <ul class="contrib-list">
-          <li>Structural epistemic warrant over provenance graphs</li>
-          <li>Independent provenance-root analysis — evidence count ≠ independent evidence</li>
-          <li>Six structural epistemic anti-patterns derived from graph topology</li>
-          <li>Supersession with transitive impact propagation</li>
-          <li>Automated reassessment when upstream knowledge changes</li>
-          <li>Integration of systems-engineering Threads of Reasoning with provenance/warrant</li>
-          <li>Implementation-independent Cognitive Harness OpenSpec</li>
-          <li>Superretometer reference engine with MCP transport</li>
-        </ul>
+        <p class="ref">
+          <a href="https://www.alphaxiv.org/abs/2609.01481" target="_blank" rel="noopener">alphaxiv.org/abs/2609.01481</a>
+        </p>
       </div>
 
     </div>
 
-    <p style="font-size: 0.88rem; color: var(--muted); margin-top: 1.5rem;">
-      Superretometer is inspired by and builds on these traditions. It is not
-      affiliated with or endorsed by the original authors or organizations.
+    <p class="disclaimer">
+      Superretometer is inspired by and builds on these traditions.
+      It is not affiliated with or endorsed by the original authors
+      or organizations.
+    </p>
+  </div>
+</section>
+
+<!-- ── Research Implications ────────────────────────────── -->
+<section>
+  <div class="wrap">
+    <h2>Research Implications</h2>
+    <p>
+      These mechanisms — persistent structured reasoning, explicit provenance
+      tracing, and independent grounding verification — may also be relevant
+      to the broader question of how AI systems can maintain testable,
+      non-decaying models of the physical world.
     </p>
   </div>
 </section>
@@ -179,7 +256,8 @@
   <div class="wrap">
     <h2>Get Started</h2>
     <p>
-      The specification and reference implementation are on GitHub.
+      The Cognitive Harness specification and the Superretometer reference
+      implementation are on GitHub.
     </p>
     <p>
       <a href="https://github.com/euthm/superretometer" target="_blank" rel="noopener">
@@ -187,9 +265,9 @@
       </a>
     </p>
     <p style="margin-top: 1rem; font-size: 0.92rem; color: var(--muted);">
-      Specification: <code>spec/</code> &nbsp;·&nbsp;
-      Reference implementation: <code>cognitive_harness/</code> &nbsp;·&nbsp;
-      Examples: <code>examples/</code> &nbsp;·&nbsp;
+      Specification: <code>spec/</code> &nbsp;&middot;&nbsp;
+      Reference implementation: <code>cognitive_harness/</code> &nbsp;&middot;&nbsp;
+      Examples: <code>examples/</code> &nbsp;&middot;&nbsp;
       Tests: <code>tests/</code>
     </p>
   </div>
@@ -199,7 +277,7 @@
 <footer>
   <div class="wrap">
     <p>
-      Apache-2.0 &nbsp;·&nbsp;
+      Apache-2.0 &nbsp;&middot;&nbsp;
       <a href="https://github.com/euthm/superretometer">GitHub</a>
     </p>
   </div>
