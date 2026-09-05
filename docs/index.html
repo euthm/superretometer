@@ -122,6 +122,28 @@
   </div>
 </section>
 
+<!-- ── From Result to Design Warrant (v0.6) ────────────────────────── -->
+<section>
+  <div class="wrap">
+    <h2>From Result to Design Warrant</h2>
+    <p>A simulation result is a file on disk. It is not a conclusion. The four-gate <strong>SimulationGatePolicy</strong> determines whether a simulation-backed claim may carry a design decision.</p>
+    <div style="text-align:center; margin: 1.5em 0; font-size:1.1em; line-height:1.8;">
+      <strong>Provenance</strong> &nbsp;→&nbsp;
+      <strong>Scope</strong> &nbsp;→&nbsp;
+      <strong>Reality</strong> &nbsp;→&nbsp;
+      <strong>Falsifiability</strong> &nbsp;→&nbsp;
+      <strong>Design-bearing</strong>
+    </div>
+    <ul class="contrib-list">
+      <li><strong>Can we reproduce it?</strong> — Complete chain from result artifact to source commit (N-PROV)</li>
+      <li><strong>Does the model represent what the claim is about?</strong> — Explicit scope as warrant boundary (N-SCOPE)</li>
+      <li><strong>Are the quantities carrying the claim independently grounded?</strong> — Truth-category-appropriate grounding (N-REALITY)</li>
+      <li><strong>Can the checks actually prove us wrong?</strong> — Invariants valid for the declared system boundary (N-INVARIANT)</li>
+    </ul>
+    <p>All four gates must PASS for design-bearing. One BLOCK means <em>informative only</em> — not that the simulation failed, but that the warrant chain is incomplete.</p>
+  </div>
+</section>
+
 <!-- ── Foundations / Lineage ────────────────────────────── -->
 <section id="foundations">
   <div class="wrap">

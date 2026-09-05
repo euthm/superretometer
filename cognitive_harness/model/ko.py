@@ -239,6 +239,111 @@ class Relation:
     type: RelationType
 
 
+# ── 14.5 SimulationGatePolicy types (v0.6) ─────────────────────────────────
+
+class GateStatus(str, Enum):
+    """Status of a single gate in the SimulationGatePolicy."""
+    PASS = "pass"
+    BLOCK = "block"
+    UNKNOWN = "unknown"
+
+
+@dataclass
+class GateResult:
+    """Result of evaluating a single gate."""
+    gate_name: str
+    status: GateStatus
+    reason: str = ""
+    evidence: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ScopeDeclaration:
+    """Explicit physical scope of a model. Acts as a warrant boundary."""
+    modeled_domain: str = ""
+    modeled_extent: str = ""
+    included_components: list[str] = field(default_factory=list)
+    excluded_components: list[str] = field(default_factory=list)
+    system_boundary: str = ""
+    allowed_claim_classes: list[str] = field(default_factory=list)
+    disallowed_claim_classes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class SimulationProvenance:
+    """Provenance chain for an executable simulation.
+    The actual chain is stored as graph relations. This dataclass provides
+    structured metadata that must be present for the provenance gate to PASS.
+    """
+    result_artifact: str = ""
+    result_sha256: str = ""
+    run_id: str = ""
+    parameter_set_id: str = ""
+    build_artifact: str = ""
+    model_id: str = ""
+    source_path: str = ""
+    source_commit: str = ""
+    source_version: str = ""
+
+
+@dataclass
+class FrozenBaseline:
+    """Immutable snapshot of a simulation study."""
+    baseline_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    version: int = 1
+    model_id: str = ""
+    source_commit: str = ""
+    parameter_set_id: str = ""
+    run_command: str = ""
+    result_artifact: str = ""
+    result_sha256: str = ""
+    gate_report: str = ""
+    allowed_claims: list[str] = field(default_factory=list)
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    immutable: bool = True
+
+
+@dataclass
+class SimulationGateReport:
+    """Report of all four gate evaluations for a simulation-bearing claim."""
+    claim_ko_id: str = ""
+    provenance: GateResult = field(default_factory=lambda: GateResult("provenance", GateStatus.UNKNOWN))
+    scope: GateResult = field(default_factory=lambda: GateResult("scope", GateStatus.UNKNOWN))
+    reality: GateResult = field(default_factory=lambda: GateResult("reality", GateStatus.UNKNOWN))
+    falsifiability: GateResult = field(default_factory=lambda: GateResult("falsifiability", GateStatus.UNKNOWN))
+    design_bearing: bool = False
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    def all_pass(self) -> bool:
+        return all(
+            g.status == GateStatus.PASS
+            for g in (self.provenance, self.scope, self.reality, self.falsifiability)
+        )
+
+    def any_block(self) -> bool:
+        return any(
+            g.status == GateStatus.BLOCK
+            for g in (self.provenance, self.scope, self.reality, self.falsifiability)
+        )
+
+    def any_unknown(self) -> bool:
+        return any(
+            g.status == GateStatus.UNKNOWN
+            for g in (self.provenance, self.scope, self.reality, self.falsifiability)
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "claim_ko_id": self.claim_ko_id,
+            "provenance": {"gate": self.provenance.gate_name, "status": self.provenance.status.value, "reason": self.provenance.reason},
+            "scope": {"gate": self.scope.gate_name, "status": self.scope.status.value, "reason": self.scope.reason},
+            "reality": {"gate": self.reality.gate_name, "status": self.reality.status.value, "reason": self.reality.reason},
+            "falsifiability": {"gate": self.falsifiability.gate_name, "status": self.falsifiability.status.value, "reason": self.falsifiability.reason},
+            "design_bearing": self.design_bearing,
+            "timestamp": self.timestamp,
+        }
+
+
 # ── 15. Anti-pattern diagnosis (structural, not keyword) ──────────────────
 
 @dataclass

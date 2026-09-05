@@ -1,8 +1,17 @@
-# Cognitive Harness of Harness — OpenSpec v0.5
+# Cognitive Harness of Harness — OpenSpec v0.6
 
 **Date:** 2026-09-05
-**Status:** v0.5 — Structural Epistemic Warrant
-**Scope:** A cognitive harness that distinguishes "the graph contains a conclusion" from "the graph warrants this conclusion." Separates storage, orchestration, reasoning, and analysis. LLM-agnostic: LLMs submit structured proposals; they never mutate canonical state directly.
+**Status:** v0.6 — SimulationGatePolicy
+**Scope:** A cognitive harness that distinguishes "the graph contains a conclusion" from "the graph warrants this conclusion." Separates storage, orchestration, reasoning, and analysis. LLM-agnostic: agents submit structured proposals; they never mutate canonical state directly.
+
+**v0.6 additions:**
+- SimulationGatePolicy: four-gate evaluation (Provenance, Scope, Reality, Falsifiability) for simulation-bearing claims
+- Design-bearing semantics: PASS/BLOCK/UNKNOWN per gate; all PASS required for design-bearing
+- ScopeDeclaration: normative scope as warrant boundary, not metadata
+- SimulationProvenance: reproducible provenance chain for executable simulations
+- FrozenBaseline: immutable snapshot of simulation study with gate report
+- Invariant validity: invariants must be valid for declared system boundary, not just computable
+- Normative rules N-PROV through N-BASELINE-IMMUTABLE (see spec/WARRANT.md)
 
 **v0.4 additions:**
 - Truth categories: every KO declares what KIND of truth claim it makes (physical observation, conservation law, documented decision, fitted parameter, ...)
@@ -118,6 +127,14 @@ A canonical KO can NEVER be directly modified or invalidated. It can only be sup
 | **Confidence** | speculative, low, medium, high, certain | Independent of epistemic status. A hypothesis can be high-confidence (well-reasoned but untested). |
 | **Provenance** | source, author, timestamp, revision, derived_from | Full chain of derivation. |
 
+**Simulation provenance (v0.6):** For executable simulations, provenance must be a reproducible chain, not a single attribution:
+
+```
+claim → result artifact → result SHA256 → run → parameter set → build artifact → model → source path → source commit → external evidence (optional)
+```
+
+Derived artifacts (results, builds) must be distinguishable from canonical source (model code, commit). Orphaned results cannot carry design claims. See N-PROV in spec/WARRANT.md.
+
 ### 4.3 Temporal and Contextual Validity
 
 Every KO carries:
@@ -125,6 +142,8 @@ Every KO carries:
 - `assumptions` — conditions under which the KO holds (e.g., ["T = 1173 K", "Fe-Si19 composition"])
 - `scope` — domain/context限定 (e.g., "IoStore thermal design")
 - `supersedes_id` / `superseded_by_id` — revision linkage
+
+**Scope as warrant boundary (v0.6):** For simulation-bearing claims, scope is normative. A `ScopeDeclaration` must describe: modeled_domain, modeled_extent, included_components, excluded_components, system_boundary, allowed_claim_classes, disallowed_claim_classes. A simulation result may only warrant claims within the explicitly declared scope (N-SCOPE).
 
 ### 4.4 Viewpoints (CAFCR)
 
@@ -397,12 +416,13 @@ An external system can provide structured input mapped to viewpoints:
 ```
 cognitive-harness/
 ├── model/
-│   ├── ko.py               # KO: type, truth category, epistemic status, DerivationRelation, Dataset
+│   ├── ko.py               # KO, GateStatus, ScopeDeclaration, SimulationProvenance, FrozenBaseline, SimulationGateReport
 │   ├── thread.py           # Thread, ThreadStep (transition metadata), Conclusion, CAFCR
 │   ├── tension.py          # Tension types
 │   └── proposal.py         # Proposal types (the mutation gateway)
 ├── analysis/
-│   └── warrant_analyzer.py # WarrantAnalyzer: structural graph analysis, independence analysis
+│   ├── warrant_analyzer.py # WarrantAnalyzer: structural graph analysis, independence analysis
+│   └── simulation_gate_policy.py # SimulationGatePolicy: four-gate evaluation (v0.6)
 ├── storage/
 │   ├── interface.py        # StorageInterface contract + dataset ops
 │   └── inmemory.py         # InMemoryStorage with deterministic validation rules
@@ -412,7 +432,7 @@ cognitive-harness/
 ├── orchestration/
 │   └── engine.py           # Tension queue, proposal pipeline, warrant integration
 ├── consumer/
-│   └── api.py              # ConsumerAPI: read + proposal + warrant queries
+│   └── api.py              # ConsumerAPI: read + proposal + warrant + simulation gate queries
 ├── main.py                 # Complete reasoning trace (9 phases)
 ├── test_bridge_trace.py    # Bridge cable: legacy v0.4 test (structural KOs needed)
 ├── test_adversarial_v05.py # Adversarial benchmark: 20 tests, 100% precision/recall
@@ -455,6 +475,13 @@ python3 test_adversarial_v05.py          # Adversarial benchmark: 20 tests, 100%
 | Deterministic validation | All transitions validated against `VALID_TRANSITIONS` |
 | Succession chains | `get_succession_chain()` returns full history |
 | Warrant is structural, not confidence-based | Low confidence + sound provenance = WARRANTED |
+| SimulationGatePolicy: four gates | test_simulation_gates: 13 tests, all four gates |
+| Provenance without chain -> BLOCK | N-PROV: orphaned result cannot carry design conclusion |
+| Scope as warrant boundary | N-SCOPE: component model cannot support system claim |
+| Invariant valid for boundary | N-INVARIANT: Cin=Cout invalid for recycle loop with reaction |
+| All gates PASS -> design-bearing | N-GATE-ALL: combined verdict |
+| Frozen baseline immutable | N-BASELINE-IMMUTABLE: silent mutation detected |
+| Harness self-falsification | Self-falsification test: H1 and H2 falsified, correct root cause found |
 
 ---
 
@@ -534,6 +561,7 @@ When a supporting KO is superseded, the OrchestrationEngine recomputes warrant f
 | `api.scan_anti_patterns()` | Returns all detected anti-patterns across all KOs |
 | `api.justification_path(ko_id)` | Returns all KOs in the justification path |
 | `api.list_anti_pattern_hits(pattern)` | Returns KOs flagged with a specific anti-pattern |
+| `api.check_simulation_gates(ko_id)` | Returns SimulationGateReport (v0.6). Four-gate evaluation for simulation-bearing claims. |
 
 ### 11.7 Adversarial Validation: v0.4.1 → v0.5 Results
 
