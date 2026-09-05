@@ -21,6 +21,7 @@ Superretometer is the reference implementation of the Cognitive Harness specific
 - **Conformance tests are important.** A check that cannot fail is not evidence. Changing both implementation and expected test output in the same PR is a red flag.
 - **No private Memory/EPF assumptions** belong in the public implementation. The public codebase uses `InMemoryStorage` only.
 - **Relation/provenance semantics must be treated carefully.** Do not change edge directionality or relation types without a spec-change PR.
+- **SimulationGatePolicy changes** must be accompanied by spec updates in `spec/WARRANT.md` and `spec/TERMINOLOGY.md` and conformance tests in `tests/conformance/test_simulation_gates.py`.
 - **Run tests before proposing changes.** `python3 -m pytest tests/ -v` must pass.
 - **Do not import WIP changes** from private runtime repositories.
 
