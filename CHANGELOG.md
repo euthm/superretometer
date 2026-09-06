@@ -2,6 +2,30 @@
 
 All notable changes to cognitive-harness (Superretometer).
 
+## [0.6.5] — 2026-09-06
+
+### Added
+- `cognitive_harness.__version__` — single version source from package metadata
+- `cognitive_harness.cli` — CLI with `superretometer --version`, `superretometer --help`, `superretometer mcp`
+- `[project.scripts]` entrypoint `superretometer = "cognitive_harness.cli:main"`
+- `cognitive_harness.mcp.server` — packaged MCP server (moved from `transports/mcp/`)
+
+### Changed
+- MCP `serverInfo.version` now reports actual package version (was hardcoded `0.1.0`)
+- MCP `orientation` uses `list_all_kos()` instead of private `_kos()`
+- MCP `open_tensions` uses public iteration (was calling nonexistent `_list_tensions()`)
+- MCP `propose_thread` returns `NotImplementedError` (was calling nonexistent `propose_thread` on ConsumerAPI)
+- MCP `propose_ko` now passes `viewpoints` parameter (was missing required arg)
+- MCP `propose_evidence` now passes `claim_id` (was passing `claim_ko_id`)
+- `transports/mcp/server.py` becomes deprecated compatibility shim
+- `[mcp]` optional dependency removed — MCP server uses only stdlib JSON-RPC
+
+### Fixed
+- `RELEASE_NOTES_v0.1.0.md` moved to `docs/releases/v0.1.0.md`
+
+### Removed
+- `mcp>=1.0.0` from optional dependencies (not used)
+
 ## [0.6.4] — 2026-09-06
 
 ### Added
