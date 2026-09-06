@@ -1,5 +1,33 @@
 # Changelog
 
+All notable changes to cognitive-harness (Superretometer).
+
+## [0.6.4] — 2025-09-06 (candidate)
+
+### Added
+- `cognitive_harness.exceptions.IncompleteEnumerationError` — raised when FULL_REQUIRED analyses cannot guarantee complete graph enumeration
+- `StorageInterface.enumeration_complete` property — backends declare whether `list_all_kos()` is provably complete
+- `StorageInterface.get_outgoing_relations()` / `get_incoming_relations()` — direction-aware relation access
+- `JUSTIFICATION_INBOUND` / `JUSTIFICATION_OUTBOUND` relation sets — direction-aware justification traversal
+- `InMemoryStorage` implements direction-aware methods
+
+### Changed
+- WarrantAnalyzer: direction-aware BFS through justification graph — SUPPORTS/VALIDATES traversed as incoming, DEPENDS_ON/DERIVED_FROM as outgoing
+- WarrantAnalyzer: `detect_all_anti_patterns()` fails closed with `IncompleteEnumerationError` when `enumeration_complete` is False
+- `InMemoryStorage.compute_impact_set()`: direction-aware — if evidence changes, impact flows to supported claims; if prerequisite changes, impact flows to dependents
+- `InMemoryStorage.get_justification_path()`: direction-aware traversal
+- Custom `StorageInterface` backends must now implement `get_outgoing_relations()` and `get_incoming_relations()`
+- Test fixtures: SUPPORTS relations created with `storage.create_relation(evidence, conclusion, SUPPORTS)` instead of embedding in KO relations
+
+### Fixed
+- Direction semantics: SUPPORTS edges were traversed in wrong direction (outgoing from conclusion instead of incoming to conclusion)
+- Cycle detection: direction-aware to avoid false positives from mixed-direction graphs
+
+### Known Limitations
+- Memory HTTP backend enumeration (`MemoryAdapter.list_all_kos()`) is NOT provably complete — search-based pagination may miss entities
+- FULL_REQUIRED analyses (`detect_all_anti_patterns`, `list_review_required`) fail closed on Memory HTTP backend
+- LOCAL_COMPLETE_ADJACENCY operations (warrant, gates, impact, justification path) remain usable when local adjacency is complete
+
 ## 0.6.3 — Storage Backend Contract + list_all_kos
 
 ### Added

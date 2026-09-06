@@ -16,8 +16,10 @@ from cognitive_harness.model.ko import (
     KnowledgeObject, EpistemicStatus, TruthCategory, WarrantStatus,
     AntiPattern, RelationType, JUSTIFICATION_RELATIONS, Dataset,
     DerivationType, AntiPatternDiagnosis,
+    JUSTIFICATION_INBOUND, JUSTIFICATION_OUTBOUND,
 )
 from cognitive_harness.storage.interface import StorageInterface
+from cognitive_harness.exceptions import IncompleteEnumerationError
 
 log = logging.getLogger(__name__)
 
@@ -116,16 +118,17 @@ class WarrantAnalyzer:
                     result.dependent_kos = dependent
 
         # 5. Check if all SUPPORTS premises share the same provenance root
+        # SUPPORTS is INBOUND: evidence -> SUPPORTS -> conclusion
+        # So we look for incoming SUPPORTS edges to the conclusion
         shared_root_weakness = False
         supports_premises: list[str] = []
         if indep:
+            incoming_supports = self.storage.get_incoming_relations(
+                conclusion_ko_id, frozenset({RelationType.SUPPORTS})
+            )
             supports_premises = [
-                kid for kid in path
-                if kid != conclusion_ko_id
-                and any(
-                    rel.type == RelationType.SUPPORTS and rel.to == kid
-                    for rel in (self.storage.get_ko(conclusion_ko_id) or KnowledgeObject()).relations
-                )
+                from_id for from_id, rel_type in incoming_supports
+                if from_id in path and from_id != conclusion_ko_id
             ]
             if len(supports_premises) >= 2:
                 premise_roots = [indep.root_sets.get(p, set()) for p in supports_premises]
@@ -173,6 +176,12 @@ class WarrantAnalyzer:
         return result
 
     def detect_all_anti_patterns(self) -> list[AntiPatternDiagnosis]:
+        """FULL_REQUIRED: must see every KO. Fails closed if enumeration incomplete."""
+        if not self.storage.enumeration_complete:
+            raise IncompleteEnumerationError(
+                "detect_all_anti_patterns requires complete enumeration. "
+                "This storage backend cannot guarantee list_all_kos() returns every KO."
+            )
         all_ko_ids = [ko.id for ko in self._iter_all_kos()]
         all_diagnoses: list[AntiPatternDiagnosis] = []
 
@@ -213,12 +222,19 @@ class WarrantAnalyzer:
 
         return all_diagnoses
 
-    # ── Justification graph traversal with cycle detection ──────────────
+    # ── Justification graph traversal with cycle detection (v0.6.4) ────────
 
     def _collect_justification_path(
         self, ko_id: str,
     ) -> tuple[list[str], list[list[str]]]:
-        """BFS backward through justification relations.
+        """Direction-aware BFS through justification relations.
+        
+        From a conclusion:
+        - INBOUND relations (SUPPORTS, VALIDATES): traverse incoming edges
+          to find evidence that supports/validates this KO
+        - OUTBOUND relations (DEPENDS_ON, DERIVED_FROM, etc.): traverse outgoing
+          edges to find prerequisites and sources
+        
         Returns (path, cycles_found). Detects direct and indirect cycles.
         """
         visited: set[str] = set()
@@ -253,13 +269,20 @@ class WarrantAnalyzer:
                 in_stack.discard(current)
                 continue
 
-            # Follow justification relations backward
+            # OUTBOUND: follow dependencies and derivations (ko -> prereq/source)
             for rel in ko.relations:
-                if rel.type in JUSTIFICATION_RELATIONS and rel.to not in visited:
+                if rel.type in JUSTIFICATION_OUTBOUND and rel.to not in visited:
                     parent[rel.to] = current
                     queue.append(rel.to)
 
-            # Follow derivation upstream
+            # INBOUND: follow supporting evidence (evidence -> ko)
+            incoming = self.storage.get_incoming_relations(current, JUSTIFICATION_INBOUND)
+            for from_id, rel_type in incoming:
+                if from_id not in visited:
+                    parent[from_id] = current
+                    queue.append(from_id)
+
+            # Follow derivation upstream (structured provenance)
             if ko.derivation:
                 for up_id in ko.derivation.upstream_ko_ids:
                     if up_id not in visited:
@@ -592,18 +615,32 @@ class WarrantAnalyzer:
         return None
 
     def _find_cycles_in_path(self, path: list[str]) -> list[list[str]]:
-        """Detect cycles in the justification graph using DFS."""
-        # Build adjacency: for each KO, which KOs does it depend on?
+        """Detect cycles in the justification graph using DFS.
+        
+        Direction-aware: follows outbound justification edges from each node,
+        and also follows inbound edges in reverse (if A SUPPORTS B and B SUPPORTS A,
+        that's a cycle).
+        """
+        # Build adjacency: for each KO, which KOs does the justification chain follow?
         adj: dict[str, list[str]] = {}
         for ko_id in path:
             ko = self.storage.get_ko(ko_id)
             if ko is None:
+                adj[ko_id] = []
                 continue
             neighbors = []
-            for rel in ko.relations:
-                if rel.type in JUSTIFICATION_RELATIONS and rel.to in path:
-                    neighbors.append(rel.to)
-            if ko.derivation:
+            # Outbound: dependencies and derivations
+            if ko is not None:
+                for rel in ko.relations:
+                    if rel.type in JUSTIFICATION_OUTBOUND and rel.to in path:
+                        neighbors.append(rel.to)
+            # Inbound: supporting evidence (these are incoming edges)
+            incoming = self.storage.get_incoming_relations(ko_id, JUSTIFICATION_INBOUND)
+            for from_id, rel_type in incoming:
+                if from_id in path:
+                    neighbors.append(from_id)
+            # Derivation upstream
+            if ko and ko.derivation:
                 for up_id in ko.derivation.upstream_ko_ids:
                     if up_id in path:
                         neighbors.append(up_id)
