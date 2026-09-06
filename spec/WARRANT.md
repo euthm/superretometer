@@ -112,7 +112,7 @@ Each gate evaluates independently. Status: PASS, BLOCK, or UNKNOWN.
 repo_remote_canonical + commit
 ```
 
-- **repo_remote_raw**: exact Git-config value as observed, preserved for audit. Never used for gating.
+- **repo_remote_sanitized**: observed transport locator with credentials/tokens removed. Preserves transport form for audit. Never stores credential-bearing URLs. If audit of exact raw input is required, use `repo_remote_raw_sha256` (hash only).
 - **repo_remote_canonical**: normalized repository identity. Transport syntax removed, lowercase hostname, trailing `.git` removed. Used for all gate comparisons.
 - **commit**: Git commit hash. The revision anchor.
 - **branch**: contextual metadata only. Not part of revision identity. Detached HEAD with canonical remote + exact commit is eligible for valid provenance. Changing branch name while commit remains unchanged does not invalidate provenance.

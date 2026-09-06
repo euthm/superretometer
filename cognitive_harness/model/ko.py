@@ -334,18 +334,22 @@ class ImplementationProvenance:
 
     Repository revision identity is canonical_remote + commit.
     Branch is optional contextual metadata, not revision identity.
+
+    repo_remote_sanitized stores the observed transport locator with credentials
+    removed.  Never persist credential-bearing URLs.
     """
-    repo_remote_raw: str = ""                 # Exact Git-config remote, preserved for audit
-    repo_remote_canonical: str = ""           # Normalized repository identity used for gating
-    repo_remote: str = ""                     # Deprecated compat: normalized into canonical on parse
-    repo_path: str = ""                       # Local/workspace path to repo root
-    branch: str = ""                          # Git branch name (contextual, optional)
-    commit: str = ""                          # Git commit hash (revision identity)
+    repo_remote_sanitized: str = ""            # Observed transport locator, credentials stripped
+    repo_remote_canonical: str = ""            # Normalized repository identity used for gating
+    repo_remote_raw: str = ""                  # Deprecated: renamed to repo_remote_sanitized
+    repo_remote: str = ""                      # Deprecated compat: normalized into canonical on parse
+    repo_path: str = ""                        # Local/workspace path to repo root
+    branch: str = ""                           # Git branch name (contextual, optional)
+    commit: str = ""                           # Git commit hash (revision identity)
     submodule_pins: dict[str, dict] = field(default_factory=dict)  # name → {path, remote, commit}
-    test_run_id: str = ""                     # CI/CD run ID or local test session
-    test_result_sha256: str = ""              # SHA256 of test output/report
-    session_id: str = ""                      # CH session ID
-    epf_ready_id: str = ""                    # EPF READY feature definition ID
+    test_run_id: str = ""                      # CI/CD run ID or local test session
+    test_result_sha256: str = ""               # SHA256 of test output/report
+    session_id: str = ""                       # CH session ID
+    epf_ready_id: str = ""                     # EPF READY feature definition ID
 
 
 @dataclass

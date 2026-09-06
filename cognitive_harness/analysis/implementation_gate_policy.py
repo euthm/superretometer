@@ -42,13 +42,16 @@ def canonical_remote(remote: str) -> str:
         git://github.com/euthm/foo       -> github.com/euthm/foo
         git@gitlab.example.com:grp/repo.git -> gitlab.example.com/grp/repo
         github.com/euthm/foo             -> github.com/euthm/foo (already canonical)
+        GitHub.com/euthm/foo             -> github.com/euthm/foo (hostname lowercased)
+        ssh://git@git.example.com:2222/group/repo.git -> git.example.com/group/repo
 
     Rules:
         - lowercase hostname
         - remove transport/user credentials
         - remove trailing .git
         - remove trailing slash
-        - preserve repository owner/path semantics
+        - remove SSH port (transport metadata, not identity)
+        - preserve repository owner/path case
         - never preserve credentials/tokens
         - unknown hosts pass through after transport removal
     """
@@ -56,26 +59,33 @@ def canonical_remote(remote: str) -> str:
     if not r:
         return ""
 
-    # Strip trailing .git (only at the very end, after slash or string end)
+    # Strip trailing .git
     if r.endswith(".git"):
         r = r[:-4]
 
-    # SCP-style: git@host:path
-    scp_match = re.match(r'^[^@]+@([^:]+):(.+)$', r)
-    if scp_match:
+    # SCP-style: git@host:path (no :// present)
+    scp_match = re.match(r'^[^@/]+@([^:]+):(.+)$', r)
+    if scp_match and "://" not in r:
         host = scp_match.group(1).lower()
         path = scp_match.group(2)
         return f"{host}/{path}".rstrip("/")
 
-    # URL-style protocols
-    url_match = re.match(r'^(?:https?|ssh|git)://(?:(?:[^@/]+)@)?([^/:]+)(/[^?#]+)?', r)
+    # URL-style protocols (handles ssh://host:port/path, https://host/path, etc.)
+    url_match = re.match(r'^(?:https?|ssh|git)://(?:(?:[^@/]+)@)?([^/:]+)(?::\d+)?(/[^?#]+)?', r)
     if url_match:
         host = url_match.group(1).lower()
         path = url_match.group(2) or ""
         return f"{host}{path}".rstrip("/")
 
-    # Already canonical or unrecognized: return as-is (stripped)
-    return r.rstrip("/")
+    # Already canonical or unrecognized: lowercase hostname portion
+    # Canonical form is hostname/path — lowercase only the hostname (first segment)
+    slash_pos = r.find("/")
+    if slash_pos > 0:
+        host = r[:slash_pos].lower()
+        path = r[slash_pos:]
+        return f"{host}{path}".rstrip("/")
+
+    return r.lower().rstrip("/")
 
 
 def normalize_remote(remote: str) -> str:
@@ -90,6 +100,39 @@ def normalize_remote(remote: str) -> str:
     if r.endswith(".git"):
         r = r[:-4]
     return r.rstrip("/")
+
+
+def sanitize_remote(remote: str) -> str:
+    """Remove credentials/tokens from a remote URL for safe storage.
+
+    repo_remote_sanitized stores the observed transport locator with secrets
+    removed.  Never persist the raw credential-bearing URL.
+
+    For https/http URLs, any user@ in the authority is a credential and must
+    be stripped.  For ssh:// URLs, the user (e.g., git) is structural to the
+    SSH protocol and is preserved.
+
+    Examples:
+        https://TOKEN@github.com/example/foo.git -> https://github.com/example/foo.git
+        https://user:pass@github.com/example/foo.git -> https://github.com/example/foo.git
+        git@github.com:euthm/foo.git -> git@github.com:euthm/foo.git (SCP, no tokens)
+        ssh://git@git.example.com/path -> ssh://git@git.example.com/path (SSH user preserved)
+    """
+    r = remote.strip()
+    if not r:
+        return r
+
+    # Strip user:password@ or user@ from https/http URL-style remotes
+    # (For https/http, any auth component is a credential.)
+    url_match = re.match(r'^(https?)://(?:[^@/]+)@(.+)$', r)
+    if url_match:
+        protocol = url_match.group(1)
+        rest = url_match.group(2)
+        return f"{protocol}://{rest}"
+
+    # ssh:// and SCP-style: git@host:path or ssh://git@host/path — user is structural
+    # Pass through unchanged
+    return r
 
 
 class ImplementationGatePolicy:
@@ -251,32 +294,40 @@ class ImplementationGatePolicy:
         """Extract ImplementationProvenance from KO content.
 
         Handles backward compatibility: if only repo_remote is provided
-        (no repo_remote_raw or repo_remote_canonical), it is interpreted
-        as the raw value and normalized into repo_remote_canonical.
+        (no repo_remote_sanitized or repo_remote_canonical), it is interpreted
+        as the observed value, sanitized, and normalized into repo_remote_canonical.
 
-        Conflict detection: if both repo_remote_raw and repo_remote_canonical
-        are explicitly set, they must be consistent.  Mismatch -> fail closed.
+        Credential sanitization: any credentials/tokens in the input URL are
+        stripped before storage.  Never persist credential-bearing URLs.
+
+        Conflict detection: if both sanitized and canonical are explicitly set,
+        they must be consistent.  Mismatch -> fail closed.
         """
         if isinstance(ko.content, dict) and "implementation_provenance" in ko.content:
             d = ko.content["implementation_provenance"]
             sp = d.get("submodule_pins", {})
 
-            raw = d.get("repo_remote_raw", "")
+            # Accept new or deprecated field names
+            sanitized = d.get("repo_remote_sanitized", d.get("repo_remote_raw", ""))
             canon = d.get("repo_remote_canonical", "")
             compat = d.get("repo_remote", "")
 
-            # Conflict check: raw explicitly set and differs from canonical
-            if raw and canon:
-                raw_canon = canonical_remote(raw)
-                if raw_canon and raw_canon != canon:
-                    # Fail closed: conflicting identity sources
+            # Sanitize credentials before any processing
+            sanitized = sanitize_remote(sanitized)
+            compat = sanitize_remote(compat)
+
+            # Conflict check: sanitized explicitly set and differs from canonical
+            if sanitized and canon:
+                san_canon = canonical_remote(sanitized)
+                if san_canon and san_canon != canon:
                     log.warning(
-                        "Implementation provenance conflict: raw '%s' -> '%s' != canonical '%s'",
-                        raw, raw_canon, canon,
+                        "Implementation provenance conflict: sanitized '%s' -> '%s' != canonical '%s'",
+                        sanitized, san_canon, canon,
                     )
                     return ImplementationProvenance(
-                        repo_remote_raw=raw,
-                        repo_remote_canonical="",  # empty -> provenance gate BLOCK
+                        repo_remote_sanitized=sanitized,
+                        repo_remote_canonical="",
+                        repo_remote_raw=sanitized,
                         repo_remote=compat,
                         repo_path="",
                         branch="",
@@ -288,20 +339,19 @@ class ImplementationGatePolicy:
                         epf_ready_id="",
                     )
 
-            # Backward compat: if new fields absent, repo_remote is the raw source
-            if not raw and not canon and compat:
-                raw = compat
+            # Backward compat: if new fields absent, repo_remote is the observed source
+            if not sanitized and not canon and compat:
+                sanitized = compat
                 canon = canonical_remote(compat)
             elif not canon and compat:
-                # Explicit canonical missing but compat present — derive it
                 canon = canonical_remote(compat)
-            elif not canon and raw:
-                # Only raw provided — derive canonical from raw
-                canon = canonical_remote(raw)
+            elif not canon and sanitized:
+                canon = canonical_remote(sanitized)
 
             return ImplementationProvenance(
-                repo_remote_raw=raw,
+                repo_remote_sanitized=sanitized,
                 repo_remote_canonical=canon,
+                repo_remote_raw=sanitized,
                 repo_remote=compat,
                 repo_path=d.get("repo_path", ""),
                 branch=d.get("branch", ""),

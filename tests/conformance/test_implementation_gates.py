@@ -14,7 +14,7 @@ from cognitive_harness.model.ko import (
 )
 from cognitive_harness.storage.inmemory import InMemoryStorage
 from cognitive_harness.analysis.implementation_gate_policy import (
-    ImplementationGatePolicy, canonical_remote,
+    ImplementationGatePolicy, canonical_remote, sanitize_remote,
 )
 
 
@@ -62,7 +62,7 @@ def test_incomplete_impl_provenance(storage):
     """Missing canonical remote or commit -> BLOCK. Missing optional fields -> PASS."""
     policy = ImplementationGatePolicy(storage)
     prov = {
-        "repo_remote_raw": "git@github.com:euthm/superretometer.git",
+        "repo_remote_sanitized": "git@github.com:euthm/superretometer.git",
         "repo_path": "",  # Optional — no longer required
         "branch": "cp-007-impl",
         "commit": "af2bd3c",
@@ -340,7 +340,7 @@ def test_ch_impl_006_raw_canonical_disagree_block(storage):
     policy = ImplementationGatePolicy(storage)
     # Raw says github.com/example/repo-x, canonical claims github.com/example/repo-y
     prov = {
-        "repo_remote_raw": "git@github.com:example/repo-x.git",
+        "repo_remote_sanitized": "git@github.com:example/repo-x.git",
         "repo_remote_canonical": "github.com/example/repo-y",
         "commit": "abcdef1234567890",
     }
@@ -384,6 +384,78 @@ def test_canonical_remote_empty():
 def test_canonical_remote_lowercase_hostname():
     """Only hostname is lowercased; repo path preserves case."""
     assert canonical_remote("https://GitHub.com/Example/Repo.git") == "github.com/Example/Repo"
+
+
+def test_canonical_remote_hostname_case_already_canonical():
+    """Already-canonical input with mixed-case hostname must still lowercase host."""
+    assert canonical_remote("GitHub.com/example/foo") == "github.com/example/foo"
+    assert canonical_remote("GITHUB.com/Owner/Repo") == "github.com/Owner/Repo"
+
+
+# ================================================================
+# SSH port handling
+# ================================================================
+
+def test_canonical_remote_ssh_port():
+    """Explicit SSH port is transport metadata, not repository identity."""
+    assert canonical_remote("ssh://git@git.example.com:2222/group/repo.git") == "git.example.com/group/repo"
+    assert canonical_remote("ssh://git@git.example.com:22/group/repo.git") == "git.example.com/group/repo"
+
+
+# ================================================================
+# Credential sanitization
+# ================================================================
+
+def test_sanitize_remote_token():
+    """Tokens in URL auth must be stripped."""
+    assert sanitize_remote("https://TOKEN@github.com/example/foo.git") == "https://github.com/example/foo.git"
+
+
+def test_sanitize_remote_user_pass():
+    """user:pass@ must be stripped."""
+    assert sanitize_remote("https://user:pass@github.com/example/foo.git") == "https://github.com/example/foo.git"
+
+
+def test_sanitize_remote_scp_pass_through():
+    """SCP-style git@host:path has no embedded tokens — passes through."""
+    assert sanitize_remote("git@github.com:euthm/foo.git") == "git@github.com:euthm/foo.git"
+
+
+def test_sanitize_remote_ssh_no_creds():
+    """ssh://git@host has no credentials to strip (git is the SSH user, not a token)."""
+    assert sanitize_remote("ssh://git@git.example.com:2222/group/repo.git") == "ssh://git@git.example.com:2222/group/repo.git"
+
+
+def test_sanitize_remote_empty():
+    """Empty or whitespace input returns empty."""
+    assert sanitize_remote("") == ""
+    assert sanitize_remote("   ") == ""
+
+
+def test_impl_provenance_strips_credentials(storage):
+    """Parser must not store credential-bearing URLs in provenance."""
+    policy = ImplementationGatePolicy(storage)
+    prov = {
+        "repo_remote_sanitized": "https://ghp_ABCDEFGHIJKLMNOPQRST@github.com/example/project.git",
+        "repo_remote_canonical": "github.com/example/project",
+        "commit": "abcdef1234567890",
+    }
+    storage.create_ko(mk_impl_claim(
+        "claim-creds",
+        "Token in URL",
+        impl_prov=prov,
+        declared_remotes=["github.com/example/project"],
+    ))
+    result = policy.evaluate_gates("claim-creds")
+    assert result["provenance"]["status"] == "pass"
+    assert result["scope"]["status"] == "pass"
+    # Ensure no token appears in evidence or reason
+    for gate_key in ("provenance", "scope", "test"):
+        reason = result.get(gate_key, {}).get("reason", "")
+        evidence = result.get(gate_key, {}).get("evidence", [])
+        assert "ghp_ABCDEFGHIJKLMNOPQRST" not in reason, f"Token leaked in {gate_key} reason"
+        for e in evidence:
+            assert "ghp_ABCDEFGHIJKLMNOPQRST" not in e, f"Token leaked in {gate_key} evidence"
 
 
 # ================================================================

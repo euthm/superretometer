@@ -118,14 +118,18 @@
                 "commit"
               ],
               "properties": {
-                "repo_remote_raw": {
+                "repo_remote_sanitized": {
                   "type": "string",
-                  "description": "Exact Git-config remote URL as observed (e.g., git@github.com:euthm/superretometer.git). Audit trail only."
+                  "description": "Observed transport locator with credentials removed (e.g., https://github.com/euthm/superretometer.git). Never stores tokens/secrets. Audit trail."
                 },
                 "repo_remote_canonical": {
                   "type": "string",
                   "description": "Normalized repository identity (e.g., github.com/euthm/superretometer). Used for gating and comparison.",
                   "pattern": "^[a-z][a-z0-9.-]+/[a-zA-Z0-9._/-]+$"
+                },
+                "repo_remote_raw": {
+                  "type": "string",
+                  "description": "Deprecated. Renamed to repo_remote_sanitized. Same semantics: credentials stripped before storage."
                 },
                 "repo_remote": {
                   "type": "string",
