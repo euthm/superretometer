@@ -2,6 +2,11 @@
 
 **Reference implementation of the Cognitive Harness specification — structural reasoning and epistemic warrant for autonomous engineering agents.**
 
+## Latest Release
+
+**v0.6.4** (candidate) — Direction-aware traversal + enumeration completeness (fail-closed).
+[Release notes](docs/releases/v0.6.4.md) · [Changelog](CHANGELOG.md)
+
 An AI agent can produce plausible answers, run tests, and retain large amounts of
 memory. That does not mean its conclusions follow from the evidence.
 
