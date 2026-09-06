@@ -61,16 +61,15 @@ def test_structural_counterfactual():
         epistemic_status=EpistemicStatus.PROPOSED,
         confidence=ConfidenceLevel.MEDIUM,
         provenance=Provenance(source="analysis", author="analyst"),
-        relations=[
-            Relation(to="ev1", type=RelationType.SUPPORTS),
-            Relation(to="ev2", type=RelationType.SUPPORTS),
-        ],
     )
     storage_a.create_ko(ev1)
     storage_a.create_ko(ev2)
     storage_a.create_ko(conc_a)
     storage_a.create_relation("ev1", "root", RelationType.DERIVED_FROM)
     storage_a.create_relation("ev2", "root", RelationType.DERIVED_FROM)
+    # Evidence SUPPORTS conclusion (inbound)
+    storage_a.create_relation("ev1", "conc", RelationType.SUPPORTS)
+    storage_a.create_relation("ev2", "conc", RelationType.SUPPORTS)
 
     wa_a = WarrantAnalyzer(storage_a)
     wr_a = wa_a.compute_warrant("conc")
@@ -104,14 +103,13 @@ def test_structural_counterfactual():
         epistemic_status=EpistemicStatus.PROPOSED,
         confidence=ConfidenceLevel.MEDIUM,
         provenance=Provenance(source="analysis", author="analyst"),
-        relations=[
-            Relation(to="ev1", type=RelationType.SUPPORTS),
-            Relation(to="ev2", type=RelationType.SUPPORTS),
-        ],
     )
     storage_b.create_ko(ev1_b)
     storage_b.create_ko(ev2_b)
     storage_b.create_ko(conc_b)
+    # Evidence SUPPORTS conclusion (inbound)
+    storage_b.create_relation("ev1", "conc", RelationType.SUPPORTS)
+    storage_b.create_relation("ev2", "conc", RelationType.SUPPORTS)
 
     wa_b = WarrantAnalyzer(storage_b)
     wr_b = wa_b.compute_warrant("conconc")
@@ -165,12 +163,13 @@ def test_derived_warrant():
         epistemic_status=EpistemicStatus.PROPOSED,
         confidence=ConfidenceLevel.MEDIUM,
         provenance=Provenance(source="analysis", author="analyst"),
-        relations=[Relation(to="ev", type=RelationType.SUPPORTS)],
     )
     storage.create_ko(root)
     storage.create_ko(ev)
     storage.create_ko(conc)
     storage.create_relation("ev", "root", RelationType.DERIVED_FROM)
+    # Evidence SUPPORTS conclusion (inbound)
+    storage.create_relation("ev", "conc", RelationType.SUPPORTS)
 
     wa = WarrantAnalyzer(storage)
     wr1 = wa.compute_warrant("conc")

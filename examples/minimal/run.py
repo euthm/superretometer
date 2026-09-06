@@ -14,8 +14,8 @@ from cognitive_harness.analysis.warrant_analyzer import WarrantAnalyzer
 
 storage = InMemoryStorage()
 
-# ── Independent evidence ──
-ev = KnowledgeObject(
+# ── Independent evidence (two sources for warrant) ──
+ev1 = KnowledgeObject(
     id="ev-steel-strength",
     type=KOType.OBSERVATION,
     title="Lamination steel yield stress: 450 MPa",
@@ -28,10 +28,24 @@ ev = KnowledgeObject(
         author="materials-lab",
         independent=True,
     ),
-    # Evidence SUPPORTS the conclusion
-    relations=[Relation(to="conc-safe-stress", type=RelationType.SUPPORTS)],
 )
-storage.create_ko(ev)
+storage.create_ko(ev1)
+
+ev2 = KnowledgeObject(
+    id="ev-thermal-conductivity",
+    type=KOType.OBSERVATION,
+    title="Thermal conductivity within tolerance",
+    content="Independent thermal measurement confirms material properties.",
+    truth_category=TruthCategory.SOURCED_MATERIAL_DATA,
+    epistemic_status=EpistemicStatus.VALIDATED,
+    confidence=ConfidenceLevel.HIGH,
+    provenance=Provenance(
+        source="thermal-lab",
+        author="thermal-eng",
+        independent=True,
+    ),
+)
+storage.create_ko(ev2)
 
 # ── Conclusion ──
 conc = KnowledgeObject(
@@ -46,8 +60,10 @@ conc = KnowledgeObject(
 )
 storage.create_ko(conc)
 
-# ── Graph edge: evidence SUPPORTS conclusion ──
+# ── Graph edges: evidence SUPPORTS conclusion (v0.6.4 direction-aware) ──
+# Normative direction: evidence -> SUPPORTS -> conclusion
 storage.create_relation("ev-steel-strength", "conc-safe-stress", RelationType.SUPPORTS)
+storage.create_relation("ev-thermal-conductivity", "conc-safe-stress", RelationType.SUPPORTS)
 
 # ── Warrant analysis ──
 wa = WarrantAnalyzer(storage)

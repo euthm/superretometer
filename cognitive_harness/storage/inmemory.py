@@ -20,6 +20,8 @@ from cognitive_harness.storage.interface import StorageInterface
 
 
 class InMemoryStorage(StorageInterface):
+    enumeration_complete = True  # _kos.values() returns every object
+
     def __init__(self):
         self._kos: dict[str, KnowledgeObject] = {}
         self._evidence: dict[str, dict] = {}
@@ -56,6 +58,28 @@ class InMemoryStorage(StorageInterface):
             return False
         fr.relations.append(Relation(to=to_id, type=rel_type))
         return True
+
+    # ── Direction-aware relation access (v0.6.4) ──────────────────────
+
+    def get_outgoing_relations(self, ko_id: str, relation_types: frozenset | None = None) -> list[tuple[str, RelationType]]:
+        """Return outgoing relations: (to_id, type)."""
+        ko = self._kos.get(ko_id)
+        if ko is None:
+            return []
+        result = [(r.to, r.type) for r in ko.relations]
+        if relation_types:
+            result = [(to, t) for to, t in result if t in relation_types]
+        return result
+
+    def get_incoming_relations(self, ko_id: str, relation_types: frozenset | None = None) -> list[tuple[str, RelationType]]:
+        """Return incoming relations: (from_id, type)."""
+        result = []
+        for kid, ko in self._kos.items():
+            for r in ko.relations:
+                if r.to == ko_id:
+                    if relation_types is None or r.type in relation_types:
+                        result.append((kid, r.type))
+        return result
 
     # ── Queries ───────────────────────────────────────────────────────
 
@@ -115,17 +139,52 @@ class InMemoryStorage(StorageInterface):
         return chain
 
     def compute_impact_set(self, ko_id: str) -> list[str]:
-        """BFS: find all KOs that depend on ko_id via impact relations."""
+        """BFS: find all KOs downstream of ko_id.
+        
+        Impact semantics (v0.6.4): if X changes, which KOs are affected?
+        
+        For OUTBOUND relations (DEPENDS_ON, DERIVED_FROM):
+          X is a prerequisite. Find KOs Y where Y -> DEPENDS_ON/DERIVED_FROM -> X.
+          These Y dependents are affected.
+        
+        For INBOUND relations (SUPPORTS, VALIDATES):
+          X is evidence/support. Find the target Z where X -> SUPPORTS/VALIDATES -> Z.
+          The claim Z loses support and is affected.
+          Do NOT recurse backward from Z through its own evidence — 
+          that would create false impact from conclusions back to evidence.
+        
+        For CONSTRAINS, IMPACTS:
+          X constrains/impacts Z. Find X -> CONSTRAINS/IMPACTS -> Z.
+        """
         impacted: set[str] = set()
         queue = [ko_id]
         while queue:
             current = queue.pop(0)
+            
+            # Case 1: Find KOs that depend on current (incoming DEPENDS_ON, DERIVED_FROM)
             for ko in self._kos.values():
                 for rel in ko.relations:
-                    if rel.type in IMPACT_RELATIONS and rel.to == current:
+                    if rel.type in (RelationType.DEPENDS_ON, RelationType.DERIVED_FROM) and rel.to == current:
                         if ko.id not in impacted:
                             impacted.add(ko.id)
                             queue.append(ko.id)
+            
+            # Case 2: current is evidence — find claims it supports (outgoing SUPPORTS, VALIDATES)
+            ko_cur = self._kos.get(current)
+            if ko_cur:
+                for rel in ko_cur.relations:
+                    if rel.type in (RelationType.SUPPORTS, RelationType.VALIDATES):
+                        if rel.to not in impacted:
+                            impacted.add(rel.to)
+                            queue.append(rel.to)
+            
+            # Case 3: current constrains/impacts others (outgoing CONSTRAINS, IMPACTS)
+            if ko_cur:
+                for rel in ko_cur.relations:
+                    if rel.type in (RelationType.CONSTRAINS, RelationType.IMPACTS):
+                        if rel.to not in impacted:
+                            impacted.add(rel.to)
+                            queue.append(rel.to)
         return list(impacted)
 
     def mark_review_required(self, ko_ids: list[str], reason: str) -> int:
@@ -390,6 +449,12 @@ class InMemoryStorage(StorageInterface):
         ]
 
     def get_justification_path(self, ko_id: str) -> list[str]:
+        """Direction-aware justification path.
+        
+        From a conclusion, find all KOs in its justification chain:
+        - OUTGOING DEPENDS_ON, DERIVED_FROM → prerequisites and sources
+        - INCOMING SUPPORTS, VALIDATES → supporting evidence
+        """
         visited: set[str] = set()
         queue = [ko_id]
         path = []
@@ -399,12 +464,18 @@ class InMemoryStorage(StorageInterface):
                 continue
             visited.add(current)
             path.append(current)
+            
+            # Outbound: follow dependencies and derivations
             ko = self._kos.get(current)
-            if ko is None:
-                continue
-            for rel in ko.relations:
-                if rel.type in JUSTIFICATION_RELATIONS and rel.to not in visited:
-                    queue.append(rel.to)
+            if ko is not None:
+                for rel in ko.relations:
+                    if rel.type in JUSTIFICATION_OUTBOUND and rel.to not in visited:
+                        queue.append(rel.to)
+            
+            # Inbound: follow supporting evidence
+            for from_id, rel_type in self.get_incoming_relations(current, JUSTIFICATION_INBOUND):
+                if from_id not in visited:
+                    queue.append(from_id)
         return path
 
     # ── Dataset operations (v0.5) ──────────────────────────────────────
