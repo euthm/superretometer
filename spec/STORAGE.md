@@ -40,6 +40,54 @@ Callers MUST NOT access `_kos` or any internal attribute to enumerate KOs.
 
 Relations are directional, typed edges:
 
+#### 3.1 Normative Direction Rule (v0.6.4)
+
+Every relation type has a normative direction. The edge direction in storage
+MUST match the semantic direction. Analysis MUST be direction-aware.
+
+| Relation | Semantic Direction | Graph Edge |
+|---|---|---|
+| `SUPPORTS` | evidence → claim | `evidence -> SUPPORTS -> claim` |
+| `VALIDATES` | validator → claim | `validator -> VALIDATES -> claim` |
+| `DEPENDS_ON` | dependent → prerequisite | `dependent -> DEPENDS_ON -> prerequisite` |
+| `DERIVED_FROM` | derived → source | `derived -> DERIVED_FROM -> source` |
+| `FITTED_ON` | fitted_KO → dataset | `fitted_ko -> FITTED_ON -> dataset` |
+| `TESTED_AGAINST` | tested_KO → dataset | `tested_ko -> TESTED_AGAINST -> dataset` |
+| `TRANSFERRED_FROM` | transferred → source | `transferred -> TRANSFERRED_FROM -> source` |
+| `CONTRADICTS` | contradictor → contradicted | `A -> CONTRADICTS -> B` |
+| `CONSTRAINS` | constraint → target | `constraint -> CONSTRAINS -> target` |
+| `IMPACTS` | source → target | `A -> IMPACTS -> B` |
+| `REFINES` | refinement → original | `refinement -> REFINES -> original` |
+| `SUPERSEDES` | successor → predecessor | `successor -> SUPERSEDES -> predecessor` |
+| `EQUIVALENT_TO` | A ↔ B (symmetric) | `A -> EQUIVALENT_TO -> B` |
+
+#### 3.2 Direction-Aware Traversal
+
+Warrant analysis from a conclusion MUST traverse direction-aware:
+
+- **INBOUND relations** (SUPPORTS, VALIDATES): evidence/support flows INTO the
+  conclusion. Discovered by following INCOMING edges.
+- **OUTBOUND relations** (DEPENDS_ON, DERIVED_FROM, etc.): conclusion points
+  OUTWARD to prerequisites and sources. Discovered by following OUTGOING edges.
+
+A single-direction traversal (only outgoing edges) cannot discover inbound
+justification. The storage interface must support both directions.
+
+#### 3.3 Impact Traversal
+
+Impact analysis (downstream of a changed KO) must also be direction-aware:
+
+- If a prerequisite/source changes, find KOs that `DEPENDS_ON` or `DERIVED_FROM` it.
+- If evidence/support changes, find the claim it `SUPPORTS` or `VALIDATES`.
+- If a constraint changes, find the KOs it `CONSTRAINS`.
+
+Impact does NOT flow backward from conclusions to evidence — changing a
+conclusion does not impact its evidence.
+
+---
+
+Relations are directional, typed edges:
+
 ```
 from_id -> RelationType -> to_id
 ```
@@ -175,3 +223,57 @@ Backends with pagination (remote APIs, databases):
 - `get_justification_path()` must be complete — partial paths produce wrong warrant.
 
 A backend that returns a truncated `list_all_kos()` is non-conformant.
+
+## Graph Enumeration Completeness (v0.6.4)
+
+### The Problem
+
+`list_all_kos()` is used by `WarrantAnalyzer.detect_all_anti_patterns()` and other
+graph-level analyses. The question is: can the backend GUARANTEE that every KO in the
+selected scope is returned?
+
+### InMemoryStorage
+
+Complete. `_kos.values()` returns every object. No pagination, no search, no tombstones.
+**Guarantee: complete.**
+
+### Memory Backend (external graph)
+
+Two API surfaces exist:
+
+**MCP Tools (provably complete):**
+- `memory_entity-type-list()` — lists all registered entity types
+- `memory_entity-query(type_name, limit=200, offset=N)` — paginated by type
+- Pattern: type-list → per-type paginated entity-query → deduplicate → complete
+
+**HTTP REST API (NOT provably complete):**
+- `/api/graph/search` with `"*"` query — search-based, not guaranteed complete
+- `/api/graph/objects/count` — returns total count for verification
+- `/api/graph/journal` — event log, may miss objects created outside adapter
+- No type-list endpoint exists in HTTP API
+
+**Completeness assessment:**
+- MCP approach (type-list + paginated query) is **provably complete**
+- HTTP search approach is **NOT provably complete** — search may miss entities
+- The current MemoryAdapter uses the HTTP API and supplements with `_created_ids` registry
+- For full completeness, the adapter must be extended to call MCP tools or the
+  HTTP API must be extended with type-list + paginated query endpoints
+
+**Warning:** Soft-deleted (tombstoned) entities are excluded from enumeration by default.
+Superseded KOs must be explicitly included if analysis requires them.
+
+### Fail-Closed Behavior
+
+Operations that require FULL graph completeness:
+- `detect_all_anti_patterns()` — must see every KO
+- `compute_impact_set()` — must see every KO for BFS
+- Global cycle detection
+
+Operations that can operate on partial/local retrieval:
+- `compute_warrant(ko_id)` — traverses from a specific KO
+- `evaluate_gates(ko_id)` — local to one claim
+- `get_justification_path(ko_id)` — local traversal
+
+If a backend cannot guarantee complete enumeration, it MUST either:
+1. Raise `NotImplementedError` on `list_all_kos()`, or
+2. Return a completeness flag that the analysis layer can check before proceeding.

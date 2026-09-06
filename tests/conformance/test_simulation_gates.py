@@ -220,11 +220,10 @@ def test_all_gates_pass(storage):
         "claim-all-pass", "Component thermal validated",
         scope="component-level slab", prov=prov, scope_decl=scope_decl,
         validators=vals,
-        relations=[
-            Relation(to="ev-e1", type=RelationType.SUPPORTS),
-            Relation(to="ev-law", type=RelationType.SUPPORTS),
-        ],
     ))
+    # Evidence SUPPORTS claim (inbound to claim)
+    storage.create_relation("ev-e1", "claim-all-pass", RelationType.SUPPORTS)
+    storage.create_relation("ev-law", "claim-all-pass", RelationType.SUPPORTS)
     report = policy.evaluate_gates("claim-all-pass")
     assert report.provenance.status == GateStatus.PASS, f"{report.provenance.reason}"
     assert report.scope.status == GateStatus.PASS, f"{report.scope.reason}"
@@ -608,10 +607,11 @@ def test_conditional_warrant_reality_unknown(storage):
         scope="component-level", prov=prov, scope_decl=scope_decl,
         validators=vals,
         relations=[
-            Relation(to="cond-ev-grounded", type=RelationType.SUPPORTS),
             Relation(to="cond-assumption", type=RelationType.DEPENDS_ON),
         ],
     ))
+    # Evidence SUPPORTS claim (inbound)
+    storage.create_relation("cond-ev-grounded", "claim-conditional", RelationType.SUPPORTS)
 
     # First verify warrant status is CONDITIONALLY_WARRANTED
     warrant = analyzer.compute_warrant("claim-conditional")

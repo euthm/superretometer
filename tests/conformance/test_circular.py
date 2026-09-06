@@ -113,9 +113,10 @@ def test_no_false_positive_on_valid_chain():
         epistemic_status=EpistemicStatus.PROPOSED,
         confidence=ConfidenceLevel.MEDIUM,
         provenance=Provenance(source="analysis", author="analyst"),
-        relations=[Relation(to="model-intermediate", type=RelationType.SUPPORTS)],
     ))
     storage.create_relation("model-intermediate", "ev-base", RelationType.DERIVED_FROM)
+    # Model SUPPORTS conclusion (inbound)
+    storage.create_relation("model-intermediate", "conclusion-valid", RelationType.SUPPORTS)
 
     wa = WarrantAnalyzer(storage)
     result = wa.compute_warrant("conclusion-valid")

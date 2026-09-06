@@ -374,11 +374,10 @@ def test_same_source(storage, bench):
         derivation=DerivationRelation(derivation_type=DerivationType.MATHEMATICAL,
                                       upstream_ko_ids=["same-src"]))
     storage.create_ko(ko_e2)
-    ko_conc = mk_ko("same-conc", "PCM validated", TruthCategory.MODEL_DERIVED,
-        relations=[
-            Relation(to="same-e1", type=RelationType.SUPPORTS),
-            Relation(to="same-e2", type=RelationType.SUPPORTS)])
-    storage.create_ko(ko_conc)
+    storage.create_ko(mk_ko("same-conc", "PCM validated", TruthCategory.MODEL_DERIVED))
+    # Evidence SUPPORTS conclusion (inbound to conclusion)
+    storage.create_relation("same-e1", "same-conc", RelationType.SUPPORTS)
+    storage.create_relation("same-e2", "same-conc", RelationType.SUPPORTS)
 
     analyzer = WarrantAnalyzer(storage)
     result = analyzer.compute_warrant("same-conc")
@@ -405,11 +404,9 @@ def test_shared_upstream(storage, bench):
         derivation=DerivationRelation(derivation_type=DerivationType.MEASURED,
                                       upstream_ko_ids=["shared-up"]))
     storage.create_ko(ko_sb)
-    ko_conc = mk_ko("shared-conc", "Temperature confirmed", TruthCategory.MODEL_DERIVED,
-        relations=[
-            Relation(to="shared-a", type=RelationType.SUPPORTS),
-            Relation(to="shared-b", type=RelationType.SUPPORTS)])
-    storage.create_ko(ko_conc)
+    storage.create_ko(mk_ko("shared-conc", "Temperature confirmed", TruthCategory.MODEL_DERIVED))
+    storage.create_relation("shared-a", "shared-conc", RelationType.SUPPORTS)
+    storage.create_relation("shared-b", "shared-conc", RelationType.SUPPORTS)
 
     analyzer = WarrantAnalyzer(storage)
     result = analyzer.compute_warrant("shared-conc")
@@ -510,11 +507,9 @@ def test_counterfactual_shared_vs_independent(storage, bench):
                         derivation_type=DerivationType.MODELED,
                         upstream_ko_ids=["cf-sim"]))
         storage.create_ko(ko)
-    ko_conc_a = mk_ko("cf-conc-a", "Consensus from tests",
-                       TruthCategory.MODEL_DERIVED,
-                       relations=[Relation(to=f"cf-a-{i}", type=RelationType.SUPPORTS)
-                                  for i in range(3)])
-    storage.create_ko(ko_conc_a)
+    storage.create_ko(mk_ko("cf-conc-a", "Consensus from tests", TruthCategory.MODEL_DERIVED))
+    for i in range(3):
+        storage.create_relation(f"cf-a-{i}", "cf-conc-a", RelationType.SUPPORTS)
 
     # Graph B: independent sources
     for i, src in enumerate(["lab-1", "lab-2", "lab-3"]):
@@ -523,11 +518,9 @@ def test_counterfactual_shared_vs_independent(storage, bench):
                     evidence_ids=[f"ev-cf-b-{i}"])
         storage.add_evidence(f"ev-cf-b-{i}", f"cf-b-{i}", "verified", "data", [])
         storage.create_ko(ko)
-    ko_conc_b = mk_ko("cf-conc-b", "Consensus from tests",
-                       TruthCategory.MODEL_DERIVED,
-                       relations=[Relation(to=f"cf-b-{i}", type=RelationType.SUPPORTS)
-                                  for i in range(3)])
-    storage.create_ko(ko_conc_b)
+    storage.create_ko(mk_ko("cf-conc-b", "Consensus from tests", TruthCategory.MODEL_DERIVED))
+    for i in range(3):
+        storage.create_relation(f"cf-b-{i}", "cf-conc-b", RelationType.SUPPORTS)
 
     analyzer = WarrantAnalyzer(storage)
     result_a = analyzer.compute_warrant("cf-conc-a")

@@ -52,6 +52,18 @@ def mk_claim(storage, ko_id, title, scope="", prov=None, scope_decl=None,
         c["scope_declaration"] = scope_decl
     if content:
         c.update(content)
+    
+    # Direction-aware relation handling (v0.6.4):
+    # SUPPORTS and VALIDATES are inbound to the claim (evidence -> claim).
+    # DEPENDS_ON and DERIVED_FROM are outbound from the claim (claim -> prereq).
+    claim_relations = []
+    inbound_relations = []
+    for rel in (relations or []):
+        if rel.type in (RelationType.SUPPORTS, RelationType.VALIDATES):
+            inbound_relations.append(rel)
+        else:
+            claim_relations.append(rel)
+    
     storage.create_ko(KnowledgeObject(
         id=ko_id, type=KOType.CONCLUSION, title=title,
         content=c if c else None, truth_category=TruthCategory.MODEL_DERIVED,
@@ -59,9 +71,12 @@ def mk_claim(storage, ko_id, title, scope="", prov=None, scope_decl=None,
         confidence=ConfidenceLevel.MEDIUM,
         viewpoint_ids=["conceptual"],
         provenance=Provenance(source="simulation", author="validation", independent=False),
-        scope=scope, relations=relations or [],
+        scope=scope, relations=claim_relations,
         validators=validators or [],
     ))
+    # Create inbound relations: evidence -> SUPPORTS/VALIDATES -> claim
+    for rel in inbound_relations:
+        storage.create_relation(rel.to, ko_id, rel.type)
     return ko_id
 
 

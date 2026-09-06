@@ -26,6 +26,8 @@ class NoKosStorage(StorageInterface):
     list_all_kos() and not by reaching into internal state.
     """
 
+    enumeration_complete = True  # _objects.values() returns every object
+
     def __init__(self):
         # Deliberately NOT named _kos
         self._objects: dict[str, KnowledgeObject] = {}
@@ -68,6 +70,24 @@ class NoKosStorage(StorageInterface):
             return False
         fr.relations.append(Relation(to=to_id, type=rel_type))
         return True
+
+    def get_outgoing_relations(self, ko_id: str, relation_types: frozenset | None = None) -> list[tuple[str, RelationType]]:
+        ko = self._objects.get(ko_id)
+        if ko is None:
+            return []
+        result = [(r.to, r.type) for r in ko.relations]
+        if relation_types:
+            result = [(to, t) for to, t in result if t in relation_types]
+        return result
+
+    def get_incoming_relations(self, ko_id: str, relation_types: frozenset | None = None) -> list[tuple[str, RelationType]]:
+        result = []
+        for kid, ko in self._objects.items():
+            for r in ko.relations:
+                if r.to == ko_id:
+                    if relation_types is None or r.type in relation_types:
+                        result.append((kid, r.type))
+        return result
 
     def query_by_viewpoint(self, viewpoint_id: str) -> list[KnowledgeObject]:
         return [ko for ko in self._objects.values() if viewpoint_id in ko.viewpoint_ids]
@@ -263,8 +283,8 @@ class TestStorageIndependence:
         """compute_warrant works without _kos on storage."""
         self._make_ko("obs", truth_category=TruthCategory.SOURCED_MATERIAL_DATA)
         self._make_ko("conc", type=KOType.CONCLUSION, truth_category=TruthCategory.MODEL_DERIVED)
-        # Relation on conc pointing back to obs (obs supports conc)
-        self.storage.create_relation("conc", "obs", RelationType.SUPPORTS)
+        # Evidence SUPPORTS conclusion (inbound to conclusion)
+        self.storage.create_relation("obs", "conc", RelationType.SUPPORTS)
 
         wa = WarrantAnalyzer(self.storage)
         result = wa.compute_warrant("conc")

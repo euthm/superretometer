@@ -14,6 +14,19 @@ from cognitive_harness.model.proposal import Proposal
 
 
 class StorageInterface(ABC):
+    @property
+    def enumeration_complete(self) -> bool:
+        """Return True if list_all_kos() is provably complete.
+
+        FULL_REQUIRED analyses (detect_all_anti_patterns, list_review_required)
+        check this flag before proceeding.  If False, they raise
+        IncompleteEnumerationError rather than silently producing partial results.
+
+        InMemoryStorage: True (iterates _kos.values()).
+        MemoryAdapter (HTTP API): False (search-based, not provably complete).
+        """
+        return False  # Default: assume incomplete unless overridden
+
     @abstractmethod
     def create_ko(self, ko: KnowledgeObject) -> str:
         ...
@@ -29,6 +42,23 @@ class StorageInterface(ABC):
 
     @abstractmethod
     def create_relation(self, from_id: str, to_id: str, rel_type: RelationType) -> bool:
+        ...
+
+    # ── Direction-aware relation access (v0.6.4) ──────────────────────
+    @abstractmethod
+    def get_outgoing_relations(self, ko_id: str, relation_types: frozenset | None = None) -> list[tuple[str, RelationType]]:
+        """Return outgoing (from_id=ko_id) relations as list of (to_id, type).
+        Optionally filtered by relation_types. Used by warrant traversal for
+        outbound justification edges (DEPENDS_ON, DERIVED_FROM, etc.).
+        """
+        ...
+
+    @abstractmethod
+    def get_incoming_relations(self, ko_id: str, relation_types: frozenset | None = None) -> list[tuple[str, RelationType]]:
+        """Return incoming (to_id=ko_id) relations as list of (from_id, type).
+        Optionally filtered by relation_types. Used by warrant traversal for
+        inbound justification edges (SUPPORTS, VALIDATES).
+        """
         ...
 
     @abstractmethod

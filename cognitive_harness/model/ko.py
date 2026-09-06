@@ -141,6 +141,38 @@ class RelationType(str, Enum):
     EQUIVALENT_TO = "equivalent_to"    # Domain mapping: equivalence claim
 
 
+# ── Direction-aware justification relations (v0.6.4) ─────────────────────
+# Warrant traversal from a conclusion must be direction-aware:
+#   INBOUND: evidence/support flows INTO the conclusion
+#   OUTBOUND: conclusion points OUTWARD to prerequisites/sources
+#
+# Normative edge direction:
+#   SUPPORTS:     evidence -> claim       (inbound to claim)
+#   VALIDATES:    validator -> claim      (inbound to claim)
+#   DEPENDS_ON:   dependent -> prereq     (outbound from dependent)
+#   DERIVED_FROM: derived -> source       (outbound from derived)
+#   FITTED_ON:    fitted_ko -> dataset    (outbound from fitted)
+#   TESTED_AGAINST: tested_ko -> dataset  (outbound from tested)
+#   TRANSFERRED_FROM: transferred -> src  (outbound from transferred)
+
+# Relations that point INTO a conclusion (evidence/support arriving)
+# To discover these from the conclusion, traverse INCOMING edges.
+JUSTIFICATION_INBOUND = frozenset({
+    RelationType.SUPPORTS,
+    RelationType.VALIDATES,
+})
+
+# Relations that point OUT of a conclusion (dependencies/sources)
+# To discover these from the conclusion, traverse OUTGOING edges.
+JUSTIFICATION_OUTBOUND = frozenset({
+    RelationType.DEPENDS_ON,
+    RelationType.DERIVED_FROM,
+    RelationType.FITTED_ON,
+    RelationType.TESTED_AGAINST,
+    RelationType.TRANSFERRED_FROM,
+})
+
+# Compatibility: union of inbound + outbound
 JUSTIFICATION_RELATIONS = frozenset({
     RelationType.SUPPORTS,
     RelationType.DEPENDS_ON,
@@ -159,6 +191,14 @@ IMPACT_RELATIONS = frozenset({
     RelationType.CONSTRAINS,
     RelationType.IMPACTS,
 })
+
+# Impact traversal: which relations propagate downstream.
+# For impact, "downstream of X" means: any KO Y where changing X affects Y.
+# INBOUND relations: if evidence (source of SUPPORTS) changes, the claim is affected.
+#   So impact on evidence flows along INCOMING SUPPORTS edges → find targets.
+# OUTBOUND relations: if a prerequisite changes, the dependent is affected.
+#   So impact on prereq flows along INCOMING DEPENDS_ON edges → find dependents.
+# In both cases, impact is "who points at me with this relation type?"
 
 
 # ── 9. Derivation type: how a KO was produced (explicit, not inferred) ────
