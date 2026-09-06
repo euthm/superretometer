@@ -24,8 +24,7 @@ from cognitive_harness.model.ko import (
     RelationType, Provenance, Dataset, TruthCategory, WarrantStatus,
 )
 from cognitive_harness.model.proposal import Proposal, ProposalType, ProposalState
-from cognitive_harness.model.tension import Tension, TensionPriority, TensionStatus, TensionStatus
-from cognitive_harness.model.thread import Thread, Viewpoint, ReasoningMode, ThreadStatus
+from cognitive_harness.model.tension import Tension, TensionPriority, TensionStatus
 from cognitive_harness.storage.inmemory import InMemoryStorage
 from cognitive_harness.reasoning.rule_engine import RuleEngineReasoner
 from cognitive_harness.orchestration.engine import OrchestrationEngine
@@ -155,21 +154,6 @@ TOOLS = [
             },
         },
     },
-    {
-        "name": "propose_thread",
-        "description": "Propose a new Thread of Reasoning",
-        "inputSchema": {
-            "type": "object",
-            "required": ["tension_id", "question"],
-            "properties": {
-                "tension_id": {"type": "string"},
-                "question": {"type": "string"},
-                "reasoning_mode": {"type": "string"},
-                "proposer": {"type": "string"},
-                "rationale": {"type": "string"},
-            },
-        },
-    },
 ]
 
 
@@ -218,7 +202,6 @@ class MCPServer:
             "propose_relation": self._handle_propose_relation,
             "propose_evidence": self._handle_propose_evidence,
             "propose_tension": self._handle_propose_tension,
-            "propose_thread": self._handle_propose_thread,
         }
 
         handler = handlers.get(tool_name)
@@ -366,12 +349,6 @@ class MCPServer:
             rationale=args.get("rationale", ""),
         )
         return {"proposal_id": pid}
-
-    def _handle_propose_thread(self, args):
-        raise NotImplementedError(
-            "Thread proposals are not yet supported through the MCP interface. "
-            "Use the OrchestrationEngine directly."
-        )
 
     # ── Main loop ────────────────────────────────────────────────────
 

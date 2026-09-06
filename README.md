@@ -265,8 +265,7 @@ MCPServer().run()
 
 Available tools: `orientation`, `check_warrant`, `justification_path`,
 `scan_anti_patterns`, `open_tensions`, `review_required`, `impact_set`,
-`propose_ko`, `propose_relation`, `propose_evidence`, `propose_tension`,
-`propose_thread` (NotImplementedError — use OrchestrationEngine directly).
+`propose_ko`, `propose_relation`, `propose_evidence`, `propose_tension`.
 
 ## Specification documents
 

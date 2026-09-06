@@ -43,7 +43,6 @@ class _MCPTester:
             "propose_relation": self.server._handle_propose_relation,
             "propose_evidence": self.server._handle_propose_evidence,
             "propose_tension": self.server._handle_propose_tension,
-            "propose_thread": self.server._handle_propose_thread,
         }
         handler_fn = handlers.get(name)
         assert handler_fn is not None, f"Unknown tool: {name}"
@@ -122,10 +121,13 @@ class TestMCPToolFunctionality:
         assert "error" not in r
         assert r["result"]["warrant_status"] == "unresolved"
 
-    def test_propose_thread_not_implemented(self, mcp):
-        r = mcp.call_tool("propose_thread", {"tension_id": "t1", "question": "Q?"})
-        assert r.get("error", {}).get("code") == -32603
-        assert "not yet supported" in r["error"]["message"]
+    def test_propose_tension(self, mcp):
+        r = mcp.call_tool("propose_tension", {
+            "title": "Test tension", "description": "desc",
+            "ko_ids": [], "proposer": "test",
+        })
+        assert "error" not in r, r.get("error")
+        assert "proposal_id" in r["result"]
 
 
 class TestNoPrivateAccess:
