@@ -96,10 +96,10 @@ Immutable snapshot: baseline_id, version, model_id, source_commit, parameter_set
 
 ImplementationGatePolicy is a cross-cutting warrant dimension for implementation-bearing claims. It operates alongside SimulationGatePolicy and covers code, configuration, and deployment claims.
 
-### The Four Gates
+### The Six Gates
 
 ```
-PROVENANCE  →  SCOPE  →  WORKTREE  →  TEST  →  DESIGN-BEARING
+PROVENANCE  →  SCOPE  →  WORKTREE  →  TEST  →  FALSIFIABILITY  →  DEPENDENCY  →  DESIGN-BEARING
 ```
 
 Each gate evaluates independently. Status: PASS, BLOCK, or UNKNOWN.
@@ -184,7 +184,7 @@ When worktree is dirty: `claim.worktree_diff_sha256 == tested_worktree_diff_sha2
 
 ### Test Timestamp
 
-`test_timestamp` is provenance/audit metadata. Required for complete validation provenance. Must be valid ISO 8601. Not compared against Git commit timestamps (unreliable for causal ordering). Missing → UNKNOWN. Invalid format → BLOCK. No freshness/expiry semantics in v0.7.
+`test_timestamp` is provenance/audit metadata. Required for complete validation provenance. Must be valid ISO 8601 with timezone offset (Z or +/-HH:MM) for portable provenance. Naive timestamps (no offset) → UNKNOWN. Missing → UNKNOWN. Invalid format → BLOCK. Not compared against Git commit timestamps (unreliable for causal ordering). No freshness/expiry semantics in v0.7.
 
 ### Remote Mismatch Rule (N-IMPL-REMOTE)
 

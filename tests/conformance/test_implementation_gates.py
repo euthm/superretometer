@@ -989,3 +989,95 @@ def test_ch_impl_026_invalid_timestamp_block(storage):
     storage.create_ko(_mk_validator("validator-1"))
     result = policy.evaluate_gates("claim-026")
     assert result["test"]["status"] == "block"
+
+
+# ================================================================
+# CH-IMPL-027: naive timestamp (no timezone) → UNKNOWN
+# ================================================================
+
+def test_ch_impl_027_naive_timestamp_unknown(storage):
+    """Naive ISO 8601 timestamp (no TZ offset) → UNKNOWN, not portable."""
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    prov = _mk_complete_prov(remote, commit)
+    prov["test_timestamp"] = "2026-09-06T20:23:00"  # No timezone
+    storage.create_ko(_mk_claim_with_validators(
+        "claim-027", "Naive timestamp", impl_prov=prov,
+        declared_remotes=[remote],
+        validators=[_mk_falsifiable_validator("val-027")],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-027")
+    assert result["test"]["status"] == "unknown"
+
+
+# ================================================================
+# CH-IMPL-028: timezone-aware timestamp → PASS contribution
+# ================================================================
+
+def test_ch_impl_028_tz_aware_timestamp_pass(storage):
+    """Timezone-aware ISO 8601 with offset → contributes to PASS."""
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    prov = _mk_complete_prov(remote, commit)
+    prov["test_timestamp"] = "2026-09-06T20:23:00+02:00"
+    storage.create_ko(_mk_claim_with_validators(
+        "claim-028", "TZ-aware timestamp", impl_prov=prov,
+        declared_remotes=[remote],
+        validators=[_mk_falsifiable_validator("val-028")],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-028")
+    assert result["test"]["status"] == "pass"
+
+
+# ================================================================
+# CH-IMPL-029: no submodules → dependency PASS
+# ================================================================
+
+def test_ch_impl_029_no_submodules_pass(storage):
+    """No submodules declared → dependency gate PASS (not applicable)."""
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    prov = _mk_complete_prov(remote, commit)
+    storage.create_ko(_mk_claim_with_validators(
+        "claim-029", "No submodules", impl_prov=prov,
+        declared_remotes=[remote],
+        validators=[_mk_falsifiable_validator("val-029")],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-029")
+    assert result["dependency"]["status"] == "pass"
+
+
+# ================================================================
+# CH-IMPL-030: worktree unobserved → UNKNOWN
+# ================================================================
+
+def test_ch_impl_030_worktree_unobserved_unknown(storage):
+    """worktree_clean not set (None) → worktree gate UNKNOWN."""
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    prov = {
+        "repo_remote_canonical": remote,
+        "commit": commit,
+        "test_run_id": "run-x",
+        "validator_ko_id": "validator-30",
+        "test_command": "pytest",
+        "test_exit_code": 0,
+        "test_result_sha256": "cc" * 32,
+        "tested_commit": commit,
+        "test_timestamp": "2026-01-01T00:00:00Z",
+    }
+    storage.create_ko(_mk_claim_with_validators(
+        "claim-030", "Unobserved worktree", impl_prov=prov,
+        declared_remotes=[remote],
+        validators=[_mk_falsifiable_validator("val-030")],
+    ))
+    storage.create_ko(_mk_validator("validator-30"))
+    result = policy.evaluate_gates("claim-030")
+    assert result["worktree"]["status"] == "unknown"

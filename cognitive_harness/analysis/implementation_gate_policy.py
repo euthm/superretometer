@@ -420,7 +420,17 @@ class ImplementationGatePolicy:
                 "test", GateStatus.UNKNOWN,
                 "test_timestamp not recorded. Incomplete validation provenance.",
             )
-        if not _is_valid_iso8601(prov.test_timestamp):
+        # Timezone-aware timestamp required for complete portable provenance
+        if _is_complete_portable_timestamp(prov.test_timestamp):
+            pass  # Good
+        elif _is_any_timestamp(prov.test_timestamp):
+            # Naive timestamp: valid format but not portable
+            return _gate(
+                "test", GateStatus.UNKNOWN,
+                f"test_timestamp '{prov.test_timestamp}' lacks timezone offset. "
+                "Not portable across machines — incomplete provenance.",
+            )
+        else:
             return _gate(
                 "test", GateStatus.BLOCK,
                 f"test_timestamp '{prov.test_timestamp}' is not valid ISO 8601.",
@@ -746,16 +756,33 @@ def _report(claim_ko_id: str, provenance: dict, scope: dict,
     }
 
 
-def _is_valid_iso8601(ts: str) -> bool:
-    """Minimal ISO 8601 validation: YYYY-MM-DDTHH:MM:SS[.fraction][Z/offset]."""
+def _is_valid_iso8601(ts: str, require_tz: bool = True) -> bool:
+    """ISO 8601 validation.
+
+    With require_tz=True (default): timezone-aware timestamps only.
+    2026-01-01T00:00:00Z or 2026-01-01T00:00:00+02:00
+
+    With require_tz=False: also accepts naive timestamps.
+    2026-01-01T00:00:00
+    """
     if not ts or not isinstance(ts, str):
         return False
-    # Acceptable patterns:
-    # 2026-01-01T00:00:00Z
-    # 2026-01-01T00:00:00.123Z
-    # 2026-01-01T00:00:00+00:00
-    # 2026-01-01T00:00:00.123+02:00
-    return bool(re.match(
-        r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$',
-        ts
-    ))
+
+    tz_pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$'
+    naive_pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$'
+
+    if re.match(tz_pattern, ts):
+        return True
+    if not require_tz and re.match(naive_pattern, ts):
+        return True
+    return False
+
+
+def _is_complete_portable_timestamp(ts: str) -> bool:
+    """Full portable timestamp: timezone-aware ISO 8601."""
+    return _is_valid_iso8601(ts, require_tz=True)
+
+
+def _is_any_timestamp(ts: str) -> bool:
+    """Any ISO 8601 timestamp, including naive."""
+    return _is_valid_iso8601(ts, require_tz=False)
