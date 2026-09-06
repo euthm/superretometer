@@ -12,6 +12,7 @@ import uuid
 from cognitive_harness.model.ko import (
     KnowledgeObject, EpistemicStatus, RelationType, VALID_TRANSITIONS,
     Relation, Provenance, IMPACT_RELATIONS, JUSTIFICATION_RELATIONS, Dataset,
+    JUSTIFICATION_INBOUND, JUSTIFICATION_OUTBOUND,
 )
 from cognitive_harness.model.proposal import Proposal, ProposalType, ProposalState
 from cognitive_harness.model.tension import Tension

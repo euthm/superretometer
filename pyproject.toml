@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cognitive-harness"
-version = "0.6.4"
+version = "0.6.5"
 description = "Structured engineering reasoning, provenance, epistemic warrant, and change-impact analysis over a knowledge graph"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -20,13 +20,16 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
+[project.scripts]
+superretometer = "cognitive_harness.cli:main"
+
 [project.optional-dependencies]
-mcp = [
-    "mcp>=1.0.0",
-]
+# The [mcp] extra is kept for compatibility but is no longer needed.
+# The MCP server is included in the base package and uses no external deps.
+mcp = []
 dev = [
     "pytest>=7.0",
 ]
 
 [tool.setuptools.packages.find]
-include = ["cognitive_harness*"]
+include = ["cognitive_harness*", "transports*"]

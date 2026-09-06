@@ -161,10 +161,11 @@ When a knowledge object is superseded by a revised version:
 pip install cognitive-harness
 ```
 
-Zero dependencies. The optional `mcp` extra provides MCP transport:
+Zero dependencies. MCP server and CLI are included in the base package.
 
 ```bash
-pip install "cognitive-harness[mcp]"
+superretometer --version
+superretometer mcp
 ```
 
 **Naming note:** The Python package is `cognitive-harness` (import as `cognitive_harness`).
@@ -247,18 +248,22 @@ do not assume a particular backend.
 
 ## MCP integration
 
-An optional MCP (Model Context Protocol) server exposes the core tools over
-JSON-RPC stdio:
+The MCP server is included in the base package. Run it with:
+
+```bash
+superretometer mcp
+```
+
+Or programmatically:
 
 ```python
-from transports.mcp.server import MCPServer
+from cognitive_harness.mcp.server import MCPServer
 MCPServer().run()
 ```
 
 Available tools: `orientation`, `check_warrant`, `justification_path`,
 `scan_anti_patterns`, `open_tensions`, `review_required`, `impact_set`,
-`propose_ko`, `propose_relation`, `propose_evidence`, `propose_tension`,
-`propose_thread`.
+`propose_ko`, `propose_relation`, `propose_evidence`, `propose_tension`.
 
 ## Specification documents
 
@@ -313,6 +318,8 @@ is not endorsed by the original authors. See `docs/` for detailed attribution.
 
 ## Project status
 
+v0.6.5 candidate — Packaged MCP server, CLI, and distribution. [PR #8](https://github.com/euthm/superretometer/pull/8)
+v0.6.4 — Direction-aware traversal + enumeration completeness.
 v0.1.0 — First public release. Specification and reference implementation are
 stable. The conformance suite defines the behavioral contract. Breaking changes
 to the model or warrant semantics will require a new major version.
