@@ -14,6 +14,8 @@ Normative rule (N-IMPL-PROV):
 """
 from __future__ import annotations
 import logging
+import re
+from typing import Optional, Tuple
 from cognitive_harness.model.ko import (
     KnowledgeObject, GateStatus, GateResult, ScopeDeclaration,
     ImplementationProvenance,
@@ -21,6 +23,73 @@ from cognitive_harness.model.ko import (
 from cognitive_harness.storage.interface import StorageInterface
 
 log = logging.getLogger(__name__)
+
+
+# ── Canonical Remote Normalization ─────────────────────────────────────────
+
+def canonical_remote(remote: str) -> str:
+    """Normalize a Git remote URL to a canonical repository identity.
+
+    Canonical form: hostname/owner/repo
+
+    Normalizes transport syntax only — never invents repository identity.
+
+    Examples:
+        git@github.com:euthm/foo.git     -> github.com/euthm/foo
+        https://github.com/euthm/foo.git -> github.com/euthm/foo
+        ssh://git@github.com/euthm/foo   -> github.com/euthm/foo
+        http://github.com/euthm/foo.git  -> github.com/euthm/foo
+        git://github.com/euthm/foo       -> github.com/euthm/foo
+        git@gitlab.example.com:grp/repo.git -> gitlab.example.com/grp/repo
+        github.com/euthm/foo             -> github.com/euthm/foo (already canonical)
+
+    Rules:
+        - lowercase hostname
+        - remove transport/user credentials
+        - remove trailing .git
+        - remove trailing slash
+        - preserve repository owner/path semantics
+        - never preserve credentials/tokens
+        - unknown hosts pass through after transport removal
+    """
+    r = remote.strip()
+    if not r:
+        return ""
+
+    # Strip trailing .git (only at the very end, after slash or string end)
+    if r.endswith(".git"):
+        r = r[:-4]
+
+    # SCP-style: git@host:path
+    scp_match = re.match(r'^[^@]+@([^:]+):(.+)$', r)
+    if scp_match:
+        host = scp_match.group(1).lower()
+        path = scp_match.group(2)
+        return f"{host}/{path}".rstrip("/")
+
+    # URL-style protocols
+    url_match = re.match(r'^(?:https?|ssh|git)://(?:(?:[^@/]+)@)?([^/:]+)(/[^?#]+)?', r)
+    if url_match:
+        host = url_match.group(1).lower()
+        path = url_match.group(2) or ""
+        return f"{host}{path}".rstrip("/")
+
+    # Already canonical or unrecognized: return as-is (stripped)
+    return r.rstrip("/")
+
+
+def normalize_remote(remote: str) -> str:
+    """Backward-compatible alias: normalizes git@ -> https:// for string comparison.
+
+    Deprecated in favor of canonical_remote(). Kept for backward compatibility
+    with existing remote-matching logic.
+    """
+    r = remote.strip()
+    if r.startswith("git@"):
+        r = r.replace(":", "/", 1).replace("git@", "https://", 1)
+    if r.endswith(".git"):
+        r = r[:-4]
+    return r.rstrip("/")
 
 
 class ImplementationGatePolicy:
@@ -74,7 +143,7 @@ class ImplementationGatePolicy:
             )
 
         missing = []
-        for attr in ("repo_remote", "repo_path", "branch", "commit"):
+        for attr in ("repo_remote_canonical", "commit"):
             if not getattr(prov, attr, ""):
                 missing.append(attr)
 
@@ -84,10 +153,15 @@ class ImplementationGatePolicy:
                 f"Provenance chain incomplete. Missing: {', '.join(missing)}.",
             )
 
+        canon = prov.repo_remote_canonical
+        evidence = [prov.commit, canon]
+        if prov.branch:
+            evidence.append(f"branch: {prov.branch}")
+
         return _gate(
             "provenance", GateStatus.PASS,
-            f"Complete provenance chain: {prov.repo_remote} @{prov.commit}",
-            evidence=[prov.commit, prov.repo_remote],
+            f"Complete provenance chain: {canon} @{prov.commit}",
+            evidence=evidence,
         )
 
     # ── Gate 2: Scope ─────────────────────────────────────────────────
@@ -103,7 +177,6 @@ class ImplementationGatePolicy:
             )
 
         scope_decl = self._get_scope_declaration(ko)
-        # Gather allowed remotes from scope — try multiple sources
         allowed_remotes = self._extract_allowed_remotes(ko, scope_decl)
         if not allowed_remotes:
             return _gate(
@@ -111,26 +184,25 @@ class ImplementationGatePolicy:
                 "No remotes declared in scope. Cannot evaluate remote match.",
             )
 
-        prov_remote = prov.repo_remote
-        if not prov_remote:
+        prov_canon = prov.repo_remote_canonical
+        if not prov_canon:
             return _gate(
                 "scope", GateStatus.BLOCK,
-                "Provenance has no repo_remote. Cannot match against scope.",
+                "Provenance has no canonical remote. Cannot match against scope.",
             )
 
-        # Normalize and compare
-        if not self._remote_matches(prov_remote, allowed_remotes):
+        if not self._remote_matches_canonical(prov_canon, allowed_remotes):
             return _gate(
                 "scope", GateStatus.BLOCK,
-                f"Remote mismatch: provenance remote '{prov_remote}' "
+                f"Remote mismatch: provenance canonical '{prov_canon}' "
                 f"not in scope-declared remotes: {allowed_remotes}. "
                 "Implementation claim cannot be design-bearing.",
             )
 
         return _gate(
             "scope", GateStatus.PASS,
-            f"Provenance remote '{prov_remote}' matches scope-declared remote.",
-            evidence=[prov_remote],
+            f"Provenance canonical remote '{prov_canon}' matches scope-declared remote.",
+            evidence=[prov_canon],
         )
 
     # ── Gate 3: Test ──────────────────────────────────────────────────
@@ -176,12 +248,61 @@ class ImplementationGatePolicy:
     def _get_implementation_provenance(
         ko: KnowledgeObject,
     ) -> ImplementationProvenance | None:
-        """Extract ImplementationProvenance from KO content."""
+        """Extract ImplementationProvenance from KO content.
+
+        Handles backward compatibility: if only repo_remote is provided
+        (no repo_remote_raw or repo_remote_canonical), it is interpreted
+        as the raw value and normalized into repo_remote_canonical.
+
+        Conflict detection: if both repo_remote_raw and repo_remote_canonical
+        are explicitly set, they must be consistent.  Mismatch -> fail closed.
+        """
         if isinstance(ko.content, dict) and "implementation_provenance" in ko.content:
             d = ko.content["implementation_provenance"]
             sp = d.get("submodule_pins", {})
+
+            raw = d.get("repo_remote_raw", "")
+            canon = d.get("repo_remote_canonical", "")
+            compat = d.get("repo_remote", "")
+
+            # Conflict check: raw explicitly set and differs from canonical
+            if raw and canon:
+                raw_canon = canonical_remote(raw)
+                if raw_canon and raw_canon != canon:
+                    # Fail closed: conflicting identity sources
+                    log.warning(
+                        "Implementation provenance conflict: raw '%s' -> '%s' != canonical '%s'",
+                        raw, raw_canon, canon,
+                    )
+                    return ImplementationProvenance(
+                        repo_remote_raw=raw,
+                        repo_remote_canonical="",  # empty -> provenance gate BLOCK
+                        repo_remote=compat,
+                        repo_path="",
+                        branch="",
+                        commit="",
+                        submodule_pins={},
+                        test_run_id="",
+                        test_result_sha256="",
+                        session_id="",
+                        epf_ready_id="",
+                    )
+
+            # Backward compat: if new fields absent, repo_remote is the raw source
+            if not raw and not canon and compat:
+                raw = compat
+                canon = canonical_remote(compat)
+            elif not canon and compat:
+                # Explicit canonical missing but compat present — derive it
+                canon = canonical_remote(compat)
+            elif not canon and raw:
+                # Only raw provided — derive canonical from raw
+                canon = canonical_remote(raw)
+
             return ImplementationProvenance(
-                repo_remote=d.get("repo_remote", ""),
+                repo_remote_raw=raw,
+                repo_remote_canonical=canon,
+                repo_remote=compat,
                 repo_path=d.get("repo_path", ""),
                 branch=d.get("branch", ""),
                 commit=d.get("commit", ""),
@@ -215,10 +336,10 @@ class ImplementationGatePolicy:
         """Extract allowed remotes from scope declaration.
 
         Sources:
-          1. scope_declaration.allowed_claim_classes containing remote URLs
-          2. included_components containing remote URLs (git@ or https://)
+          1. content.declared_remotes (explicit field)
+          2. included_components containing remote URLs (git@, https://, etc.)
           3. scope string itself if it contains a remote URL
-          4. content.declared_remotes (explicit field)
+          4. Canonical-format remotes (hostname/path) are also accepted
         """
         remotes = []
 
@@ -242,10 +363,24 @@ class ImplementationGatePolicy:
 
     @staticmethod
     def _remote_matches(prov_remote: str, allowed: list[str]) -> bool:
-        """Check if prov_remote matches any allowed remote (with normalization)."""
+        """Legacy: normalize and compare transport URLs.
+        Deprecated — use _remote_matches_canonical instead.
+        """
         normalized_prov = ImplementationGatePolicy._normalize_remote(prov_remote)
         for a in allowed:
             if normalized_prov == ImplementationGatePolicy._normalize_remote(a):
+                return True
+        return False
+
+    @staticmethod
+    def _remote_matches_canonical(prov_canon: str, allowed: list[str]) -> bool:
+        """Compare canonical repository identity against scope-declared remotes.
+
+        Each allowed remote is canonicalized before comparison.
+        Raw transport syntax is irrelevant; only canonical identity matters.
+        """
+        for a in allowed:
+            if prov_canon == canonical_remote(a):
                 return True
         return False
 

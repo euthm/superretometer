@@ -104,9 +104,30 @@ PROVENANCE  →  SCOPE  →  TEST  →  DESIGN-BEARING
 
 Each gate evaluates independently. Status: PASS, BLOCK, or UNKNOWN.
 
-**Gate 1 — Provenance (N-IMPL-PROV):** An "implemented" claim must trace to a specific commit on a specific branch of a named repository. The chain claim → commit → remote → branch must be complete. Orphaned claims (no commit, no remote) are informative only.
+### Repository Identity
 
-**Gate 2 — Scope (N-IMPL-SCOPE):** The provenance's `repo_remote` MUST match a scope-declared remote. Remote mismatch = BLOCK. The scope must declare which remotes are authorized for this claim's domain. Normalization is applied: `git@github.com:user/repo.git` ≡ `https://github.com/user/repo.git`.
+**Repository revision identity** is the composite of canonical repository identity and commit SHA:
+
+```
+repo_remote_canonical + commit
+```
+
+- **repo_remote_raw**: exact Git-config value as observed, preserved for audit. Never used for gating.
+- **repo_remote_canonical**: normalized repository identity. Transport syntax removed, lowercase hostname, trailing `.git` removed. Used for all gate comparisons.
+- **commit**: Git commit hash. The revision anchor.
+- **branch**: contextual metadata only. Not part of revision identity. Detached HEAD with canonical remote + exact commit is eligible for valid provenance. Changing branch name while commit remains unchanged does not invalidate provenance.
+
+Canonicalization normalizes transport syntax, not repository identity:
+
+| Raw Remote | Canonical |
+|---|---|
+| `git@github.com:euthm/foo.git` | `github.com/euthm/foo` |
+| `https://github.com/euthm/foo.git` | `github.com/euthm/foo` |
+| `ssh://git@github.com/euthm/foo.git` | `github.com/euthm/foo` |
+
+**Gate 1 — Provenance (N-IMPL-PROV):** An "implemented" claim must trace to a specific commit on a canonical repository. The chain claim → commit → canonical remote must be complete. Branch is contextual metadata. Orphaned claims (no commit, no canonical remote) are informative only.
+
+**Gate 2 — Scope (N-IMPL-SCOPE):** The provenance's `repo_remote_canonical` MUST match a scope-declared remote. Scope comparison uses canonical identity only; raw transport URLs are never compared directly. Remote mismatch = BLOCK.
 
 **Gate 3 — Test (N-IMPL-TEST):** A test run must exist and be linked to the claim. If `test_run_id` resolves to a KO with `test_result_sha256`, the gate passes. Missing or unresolvable test run = BLOCK.
 
@@ -120,9 +141,9 @@ Each gate evaluates independently. Status: PASS, BLOCK, or UNKNOWN.
 
 ### Remote Mismatch Rule (N-IMPL-REMOTE)
 
-> An implementation claim is blocked if its provenance remote does not match any scope-declared remote.
+> An implementation claim is blocked if its provenance canonical remote does not match any scope-declared canonical remote.
 
-This prevents claims about code implemented on unauthorized or misidentified repositories. Example: a claim that "CP-007 is implemented" with commits on `antares-pilot/hrrm` but scope declaring `euthm/superretometer` as the authoritative remote → **BLOCK**.
+Comparison uses canonical identity only. `git@github.com:owner/repo.git` and `https://github.com/owner/repo.git` are identical. A claim about code on an unauthorized or misidentified repository → **BLOCK**.
 
 ### UNGROUNDED Claims
 

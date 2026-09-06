@@ -114,16 +114,22 @@
             "implementation": {
               "type": "object",
               "required": [
-                "repo_remote",
-                "repo_path",
-                "branch",
+                "repo_remote_canonical",
                 "commit"
               ],
               "properties": {
+                "repo_remote_raw": {
+                  "type": "string",
+                  "description": "Exact Git-config remote URL as observed (e.g., git@github.com:euthm/superretometer.git). Audit trail only."
+                },
+                "repo_remote_canonical": {
+                  "type": "string",
+                  "description": "Normalized repository identity (e.g., github.com/euthm/superretometer). Used for gating and comparison.",
+                  "pattern": "^[a-z][a-z0-9.-]+/[a-zA-Z0-9._/-]+$"
+                },
                 "repo_remote": {
                   "type": "string",
-                  "description": "Canonical remote URL declared in scope (e.g., git@github.com:euthm/superretometer.git)",
-                  "format": "uri"
+                  "description": "Deprecated. Compatibility input normalized into repo_remote_canonical. Do not use in new claims."
                 },
                 "repo_path": {
                   "type": "string",
@@ -131,12 +137,12 @@
                 },
                 "branch": {
                   "type": "string",
-                  "description": "Git branch name"
+                  "description": "Git branch name (contextual metadata, not revision identity). Optional; detached HEAD is valid."
                 },
                 "commit": {
                   "type": "string",
                   "pattern": "^[0-9a-f]{7,40}$",
-                  "description": "Git commit hash (full or short)"
+                  "description": "Git commit hash (full or short). Revision identity together with repo_remote_canonical."
                 },
                 "submodule_pins": {
                   "type": "object",

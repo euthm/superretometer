@@ -13,7 +13,9 @@ from cognitive_harness.model.ko import (
     Provenance, FalsifiableValidator, GateStatus,
 )
 from cognitive_harness.storage.inmemory import InMemoryStorage
-from cognitive_harness.analysis.implementation_gate_policy import ImplementationGatePolicy
+from cognitive_harness.analysis.implementation_gate_policy import (
+    ImplementationGatePolicy, canonical_remote,
+)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -57,16 +59,34 @@ def test_no_impl_provenance(storage):
 # ================================================================
 
 def test_incomplete_impl_provenance(storage):
+    """Missing canonical remote or commit -> BLOCK. Missing optional fields -> PASS."""
     policy = ImplementationGatePolicy(storage)
     prov = {
-        "repo_remote": "git@github.com:euthm/superretometer.git",
-        "repo_path": "",  # Missing
+        "repo_remote_raw": "git@github.com:euthm/superretometer.git",
+        "repo_path": "",  # Optional — no longer required
         "branch": "cp-007-impl",
         "commit": "af2bd3c",
     }
-    storage.create_ko(mk_impl_claim("claim-incomplete", "Partial provenance", impl_prov=prov))
-    result = policy.evaluate_gates("claim-incomplete")
-    assert result["provenance"]["status"] == "block"
+    # This should PASS now: has canonical (derived from raw) + commit
+    storage.create_ko(mk_impl_claim("claim-incomplete-path", "Missing repo_path only", impl_prov=prov))
+    result = policy.evaluate_gates("claim-incomplete-path")
+    assert result["provenance"]["status"] == "pass", "repo_path is optional, provenance should pass"
+
+    # Missing commit -> BLOCK
+    prov_no_commit = {
+        "repo_remote_raw": "git@github.com:euthm/superretometer.git",
+    }
+    storage.create_ko(mk_impl_claim("claim-missing-commit", "No commit", impl_prov=prov_no_commit))
+    result2 = policy.evaluate_gates("claim-missing-commit")
+    assert result2["provenance"]["status"] == "block", "Missing commit must block"
+
+    # Missing both raw and canonical -> BLOCK
+    prov_no_remote = {
+        "commit": "af2bd3c",
+    }
+    storage.create_ko(mk_impl_claim("claim-missing-remote", "No remote", impl_prov=prov_no_remote))
+    result3 = policy.evaluate_gates("claim-missing-remote")
+    assert result3["provenance"]["status"] == "block", "Missing remote must block"
 
 
 # ================================================================
@@ -201,3 +221,200 @@ def test_remote_normalization(storage):
 @pytest.fixture
 def storage():
     return InMemoryStorage()
+
+
+# ================================================================
+# CH-IMPL-001: equivalent remotes normalize equal (git@ vs https)
+# ================================================================
+
+def test_ch_impl_001_git_https_normalize_equal():
+    """git@ and https:// forms of the same repo must normalize identically."""
+    git_form = "git@github.com:example/foo.git"
+    https_form = "https://github.com/example/foo.git"
+    assert canonical_remote(git_form) == canonical_remote(https_form)
+    assert canonical_remote(git_form) == "github.com/example/foo"
+
+
+# ================================================================
+# CH-IMPL-002: ssh:// form normalizes equal
+# ================================================================
+
+def test_ch_impl_002_ssh_normalizes_equal():
+    """ssh://git@host/path must normalize to same canonical as git@ and https."""
+    ssh_form = "ssh://git@github.com/example/foo.git"
+    git_form = "git@github.com:example/foo.git"
+    https_form = "https://github.com/example/foo.git"
+    assert canonical_remote(ssh_form) == canonical_remote(git_form)
+    assert canonical_remote(ssh_form) == canonical_remote(https_form)
+    assert canonical_remote(ssh_form) == "github.com/example/foo"
+
+
+# ================================================================
+# CH-IMPL-003: same SHA + different canonical repo -> BLOCK
+# ================================================================
+
+def test_ch_impl_003_same_sha_wrong_repo_block(storage):
+    """Commit SHA alone is NOT global identity. Different repo -> BLOCK."""
+    policy = ImplementationGatePolicy(storage)
+    prov = {
+        "repo_remote_canonical": "github.com/example/repo-a",
+        "commit": "abcdef1234567890",
+    }
+    storage.create_ko(mk_impl_claim(
+        "claim-003",
+        "Same commit, different repo",
+        impl_prov=prov,
+        declared_remotes=["github.com/example/repo-b"],
+    ))
+    result = policy.evaluate_gates("claim-003")
+    assert result["scope"]["status"] == "block", f"Expected BLOCK, got: {result['scope']['reason']}"
+
+
+# ================================================================
+# CH-IMPL-004: branch changes, commit same -> provenance valid
+# ================================================================
+
+def test_ch_impl_004_branch_change_provenance_valid(storage):
+    """Changing branch name while commit stays same must not invalidate provenance."""
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    # First provenance on branch "main"
+    prov = {
+        "repo_remote_canonical": remote,
+        "branch": "main",
+        "commit": "abcdef1234567890",
+    }
+    storage.create_ko(mk_impl_claim(
+        "claim-004",
+        "Branch changed, commit same",
+        impl_prov=prov,
+        declared_remotes=[remote],
+    ))
+    result = policy.evaluate_gates("claim-004")
+    assert result["provenance"]["status"] == "pass"
+    assert result["scope"]["status"] == "pass"
+
+    # Update to different branch, same commit
+    prov["branch"] = "feature/new-branch"
+    storage.create_ko(mk_impl_claim(
+        "claim-004-updated",
+        "Branch changed, commit same",
+        impl_prov=prov,
+        declared_remotes=[remote],
+    ))
+    result2 = policy.evaluate_gates("claim-004-updated")
+    assert result2["provenance"]["status"] == "pass"
+    assert result2["scope"]["status"] == "pass"
+
+
+# ================================================================
+# CH-IMPL-005: detached HEAD (empty branch) -> eligible for PASS
+# ================================================================
+
+def test_ch_impl_005_detached_head_eligible(storage):
+    """Detached HEAD with canonical remote + exact commit -> provenance PASS."""
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    prov = {
+        "repo_remote_canonical": remote,
+        "branch": "",  # detached HEAD
+        "commit": "abcdef1234567890",
+    }
+    storage.create_ko(mk_impl_claim(
+        "claim-005",
+        "Detached HEAD implementation",
+        impl_prov=prov,
+        declared_remotes=[remote],
+    ))
+    result = policy.evaluate_gates("claim-005")
+    assert result["provenance"]["status"] == "pass", f"Expected PASS, got: {result['provenance']['reason']}"
+    assert result["scope"]["status"] == "pass"
+
+
+# ================================================================
+# CH-IMPL-006: raw + canonical disagree -> fail closed
+# ================================================================
+
+def test_ch_impl_006_raw_canonical_disagree_block(storage):
+    """If raw remote canonicalizes to different identity than explicit canonical -> BLOCK."""
+    policy = ImplementationGatePolicy(storage)
+    # Raw says github.com/example/repo-x, canonical claims github.com/example/repo-y
+    prov = {
+        "repo_remote_raw": "git@github.com:example/repo-x.git",
+        "repo_remote_canonical": "github.com/example/repo-y",
+        "commit": "abcdef1234567890",
+    }
+    storage.create_ko(mk_impl_claim(
+        "claim-006",
+        "Raw and canonical disagree",
+        impl_prov=prov,
+        declared_remotes=["github.com/example/repo-x"],
+    ))
+    result = policy.evaluate_gates("claim-006")
+    # The parser detects the conflict and returns an empty provenance -> provenance gate BLOCK
+    assert result["provenance"]["status"] == "block", f"Expected BLOCK on conflict, got: {result['provenance']['reason']}"
+
+
+# ================================================================
+# Additional canonicalization unit tests
+# ================================================================
+
+def test_canonical_remote_generic_gitlab():
+    """Generic GitLab/self-hosted remote normalizes correctly."""
+    assert canonical_remote("git@gitlab.example.com:group/subgroup/repo.git") == "gitlab.example.com/group/subgroup/repo"
+    assert canonical_remote("https://gitlab.example.com/group/subgroup/repo.git") == "gitlab.example.com/group/subgroup/repo"
+
+
+def test_canonical_remote_http_without_git_suffix():
+    """HTTP URL without .git suffix normalizes correctly."""
+    assert canonical_remote("http://github.com/example/foo") == "github.com/example/foo"
+
+
+def test_canonical_remote_git_protocol():
+    """git:// protocol normalizes correctly."""
+    assert canonical_remote("git://github.com/example/foo.git") == "github.com/example/foo"
+
+
+def test_canonical_remote_empty():
+    """Empty or whitespace remote returns empty string."""
+    assert canonical_remote("") == ""
+    assert canonical_remote("   ") == ""
+
+
+def test_canonical_remote_lowercase_hostname():
+    """Only hostname is lowercased; repo path preserves case."""
+    assert canonical_remote("https://GitHub.com/Example/Repo.git") == "github.com/Example/Repo"
+
+
+# ================================================================
+# Legacy test still validates backward compat with repo_remote field
+# ================================================================
+
+def test_backward_compat_repo_remote_field(storage):
+    """Old claims using only repo_remote should still work via backward compat parsing."""
+    policy = ImplementationGatePolicy(storage)
+    prov = {
+        "repo_remote": "git@github.com:example/project.git",
+        "repo_path": "/src/project",
+        "branch": "main",
+        "commit": "da827a9",
+        "test_run_id": "test-legacy",
+        "test_result_sha256": "ab" * 32,
+    }
+    storage.create_ko(mk_impl_claim(
+        "claim-legacy",
+        "Legacy repo_remote format",
+        impl_prov=prov,
+        declared_remotes=["https://github.com/example/project"],
+    ))
+    test_ko = KnowledgeObject(
+        id="test-legacy", type=KOType.EVIDENCE_ITEM, title="Test run",
+        content="", truth_category=TruthCategory.VALIDATION_RESULT,
+        epistemic_status=EpistemicStatus.VALIDATED, confidence=ConfidenceLevel.HIGH,
+        provenance=Provenance(source="pytest", author="ci", independent=True),
+    )
+    storage.create_ko(test_ko)
+    result = policy.evaluate_gates("claim-legacy")
+    assert result["provenance"]["status"] == "pass"
+    assert result["scope"]["status"] == "pass"
+    assert result["test"]["status"] == "pass"
