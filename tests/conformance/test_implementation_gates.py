@@ -1,8 +1,8 @@
 # FILE: tests/conformance/test_implementation_gates.py
 """Conformance tests for ImplementationGatePolicy — N-IMPL-PROV.
 
-Tests the three gates for implementation-bearing claims:
-  provenance → scope (remote match) → test
+Tests the six gates for implementation-bearing claims:
+  provenance → scope → worktree → test → falsifiability → dependency
 
 CP-007 conformance: an "implemented" claim whose commit is on a remote
 that is NOT declared in scope → BLOCK.
@@ -134,11 +134,12 @@ def test_remote_match_pass(storage):
         "tested_commit": commit,
         "test_timestamp": "2026-01-01T00:00:00Z",
     }
-    storage.create_ko(mk_impl_claim(
+    storage.create_ko(_mk_claim_with_validators(
         "claim-remote-match",
         "Implementation provenance spec merged",
         impl_prov=prov,
         declared_remotes=[remote],
+        validators=[_mk_falsifiable_validator("val-rm")],
     ))
     storage.create_ko(_mk_validator("validator-pass"))
     result = policy.evaluate_gates("claim-remote-match")
@@ -146,6 +147,8 @@ def test_remote_match_pass(storage):
     assert result["scope"]["status"] == "pass"
     assert result["worktree"]["status"] == "pass"
     assert result["test"]["status"] == "pass"
+    assert result["falsifiability"]["status"] == "pass"
+    assert result["dependency"]["status"] == "pass"
     assert result["design_bearing"]
 
 
@@ -528,11 +531,12 @@ def test_ch_impl_007_complete_chain_pass(storage):
     remote = "github.com/example/project"
     commit = "abcdef1234567890"
     prov = _mk_complete_prov(remote, commit)
-    storage.create_ko(mk_impl_claim(
+    storage.create_ko(_mk_claim_with_validators(
         "claim-007",
         "Complete evidence chain",
         impl_prov=prov,
         declared_remotes=[remote],
+        validators=[_mk_falsifiable_validator("val-007")],
     ))
     storage.create_ko(_mk_validator("validator-1"))
     result = policy.evaluate_gates("claim-007")
@@ -540,6 +544,7 @@ def test_ch_impl_007_complete_chain_pass(storage):
     assert result["scope"]["status"] == "pass"
     assert result["worktree"]["status"] == "pass"
     assert result["test"]["status"] == "pass"
+    assert result["falsifiability"]["status"] == "pass"
     assert result["design_bearing"]
 
 
@@ -702,9 +707,10 @@ def test_ch_impl_016_complete_success(storage):
     remote = "github.com/example/project"
     commit = "abcdef1234567890"
     prov = _mk_complete_prov(remote, commit)
-    storage.create_ko(mk_impl_claim(
+    storage.create_ko(_mk_claim_with_validators(
         "claim-016", "Full validation", impl_prov=prov,
         declared_remotes=[remote],
+        validators=[_mk_falsifiable_validator("val-016")],
     ))
     storage.create_ko(_mk_validator("validator-1"))
     result = policy.evaluate_gates("claim-016")
@@ -713,3 +719,273 @@ def test_ch_impl_016_complete_success(storage):
     assert result["worktree"]["status"] == "pass"
     assert result["test"]["status"] == "pass"
     assert result["design_bearing"]
+
+
+# ================================================================
+# Helpers for falsifiability and dependency tests
+# ================================================================
+
+def _mk_falsifiable_validator(ko_id, what_would_falsify="pytest tests/ fails"):
+    """Create a FalsifiableValidator with what_would_falsify."""
+    return FalsifiableValidator(
+        id=ko_id,
+        description="Test validation",
+        what_would_falsify=what_would_falsify,
+        passes=True,
+    )
+
+
+def _mk_claim_with_validators(ko_id, title, impl_prov=None, declared_remotes=None,
+                               validators=None, scope=""):
+    """Create an implementation-bearing claim KO with validators."""
+    c = {}
+    if impl_prov:
+        c["implementation_provenance"] = impl_prov
+    if declared_remotes:
+        c["declared_remotes"] = declared_remotes
+    return KnowledgeObject(
+        id=ko_id, type=KOType.FINDING, title=title,
+        content=c if c else None,
+        truth_category=TruthCategory.DOCUMENTED_DECISION,
+        epistemic_status=EpistemicStatus.VALIDATED,
+        confidence=ConfidenceLevel.MEDIUM,
+        provenance=Provenance(source="code_repository", author="dev", independent=True),
+        scope=scope,
+        validators=validators or [],
+    )
+
+
+# ================================================================
+# CH-IMPL-017: complete validation + falsifier → falsifiability PASS
+# ================================================================
+
+def test_ch_impl_017_falsifier_present(storage):
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    prov = _mk_complete_prov(remote, commit)
+    storage.create_ko(_mk_claim_with_validators(
+        "claim-017", "Has falsifier", impl_prov=prov,
+        declared_remotes=[remote],
+        validators=[_mk_falsifiable_validator("val-017")],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-017")
+    assert result["falsifiability"]["status"] == "pass"
+    assert result["design_bearing"]
+
+
+# ================================================================
+# CH-IMPL-018: validator exists but no what_would_falsify → UNKNOWN
+# ================================================================
+
+def test_ch_impl_018_empty_falsifier_unknown(storage):
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    prov = _mk_complete_prov(remote, commit)
+    storage.create_ko(_mk_claim_with_validators(
+        "claim-018", "Empty falsifier", impl_prov=prov,
+        declared_remotes=[remote],
+        validators=[FalsifiableValidator(id="val-018", what_would_falsify="")],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-018")
+    assert result["falsifiability"]["status"] == "unknown"
+    assert not result["design_bearing"]
+
+
+# ================================================================
+# CH-IMPL-019: no applicable validator → UNKNOWN / UNGROUNDED
+# ================================================================
+
+def test_ch_impl_019_no_validator_ungrounded(storage):
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    prov = _mk_complete_prov(remote, commit)
+    storage.create_ko(_mk_claim_with_validators(
+        "claim-019", "No validators", impl_prov=prov,
+        declared_remotes=[remote],
+        validators=[],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-019")
+    assert result["falsifiability"]["status"] == "unknown"
+    assert not result["design_bearing"]
+
+
+# ================================================================
+# CH-IMPL-020: identical submodule pins → dependency PASS
+# ================================================================
+
+def test_ch_impl_020_identical_submodule_pins(storage):
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    sub_pins = {
+        "lib-a": {
+            "path": "vendor/lib-a",
+            "repo_remote_canonical": "github.com/example/lib-a",
+            "commit": "1111111111111111",
+        }
+    }
+    prov = _mk_complete_prov(remote, commit)
+    prov["submodule_pins"] = sub_pins
+    prov["tested_submodule_pins"] = dict(sub_pins)
+    storage.create_ko(_mk_claim_with_validators(
+        "claim-020", "Matching submodules", impl_prov=prov,
+        declared_remotes=[remote],
+        validators=[_mk_falsifiable_validator("val-020")],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-020")
+    assert result["dependency"]["status"] == "pass"
+
+
+# ================================================================
+# CH-IMPL-021: submodule commit mismatch → BLOCK
+# ================================================================
+
+def test_ch_impl_021_submodule_commit_mismatch(storage):
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    prov = _mk_complete_prov(remote, commit)
+    prov["submodule_pins"] = {
+        "lib-a": {
+            "repo_remote_canonical": "github.com/example/lib-a",
+            "commit": "1111111111111111",
+        }
+    }
+    prov["tested_submodule_pins"] = {
+        "lib-a": {
+            "repo_remote_canonical": "github.com/example/lib-a",
+            "commit": "2222222222222222",
+        }
+    }
+    storage.create_ko(_mk_claim_with_validators(
+        "claim-021", "Submodule commit mismatch", impl_prov=prov,
+        declared_remotes=[remote],
+        validators=[_mk_falsifiable_validator("val-021")],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-021")
+    assert result["dependency"]["status"] == "block"
+    assert not result["design_bearing"]
+
+
+# ================================================================
+# CH-IMPL-022: same commit, different canonical remote → BLOCK
+# ================================================================
+
+def test_ch_impl_022_submodule_remote_mismatch(storage):
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    prov = _mk_complete_prov(remote, commit)
+    prov["submodule_pins"] = {
+        "lib-a": {
+            "repo_remote_canonical": "github.com/example/lib-a",
+            "commit": "1111111111111111",
+        }
+    }
+    prov["tested_submodule_pins"] = {
+        "lib-a": {
+            "repo_remote_canonical": "github.com/fork/lib-a",
+            "commit": "1111111111111111",
+        }
+    }
+    storage.create_ko(_mk_claim_with_validators(
+        "claim-022", "Submodule remote mismatch", impl_prov=prov,
+        declared_remotes=[remote],
+        validators=[_mk_falsifiable_validator("val-022")],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-022")
+    assert result["dependency"]["status"] == "block"
+
+
+# ================================================================
+# CH-IMPL-023: claim-bearing submodule has no tested pin → UNKNOWN
+# ================================================================
+
+def test_ch_impl_023_submodule_no_tested_pin(storage):
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    prov = _mk_complete_prov(remote, commit)
+    prov["submodule_pins"] = {
+        "lib-a": {
+            "repo_remote_canonical": "github.com/example/lib-a",
+            "commit": "1111111111111111",
+        }
+    }
+    storage.create_ko(_mk_claim_with_validators(
+        "claim-023", "Submodule no tested pin", impl_prov=prov,
+        declared_remotes=[remote],
+        validators=[_mk_falsifiable_validator("val-023")],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-023")
+    assert result["dependency"]["status"] == "unknown"
+
+
+# ================================================================
+# CH-IMPL-024: valid test_timestamp → complete provenance eligible
+# ================================================================
+
+def test_ch_impl_024_valid_timestamp(storage):
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    prov = _mk_complete_prov(remote, commit)
+    prov["test_timestamp"] = "2026-01-01T12:30:00Z"
+    storage.create_ko(_mk_claim_with_validators(
+        "claim-024", "Valid timestamp", impl_prov=prov,
+        declared_remotes=[remote],
+        validators=[_mk_falsifiable_validator("val-024")],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-024")
+    assert result["test"]["status"] == "pass"
+
+
+# ================================================================
+# CH-IMPL-025: missing test_timestamp → UNKNOWN
+# ================================================================
+
+def test_ch_impl_025_missing_timestamp_unknown(storage):
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    prov = _mk_complete_prov(remote, commit)
+    prov["test_timestamp"] = ""
+    storage.create_ko(_mk_claim_with_validators(
+        "claim-025", "Missing timestamp", impl_prov=prov,
+        declared_remotes=[remote],
+        validators=[_mk_falsifiable_validator("val-025")],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-025")
+    assert result["test"]["status"] == "unknown"
+
+
+# ================================================================
+# CH-IMPL-026: invalid test_timestamp → BLOCK
+# ================================================================
+
+def test_ch_impl_026_invalid_timestamp_block(storage):
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    prov = _mk_complete_prov(remote, commit)
+    prov["test_timestamp"] = "not-a-timestamp"
+    storage.create_ko(_mk_claim_with_validators(
+        "claim-026", "Invalid timestamp", impl_prov=prov,
+        declared_remotes=[remote],
+        validators=[_mk_falsifiable_validator("val-026")],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-026")
+    assert result["test"]["status"] == "block"

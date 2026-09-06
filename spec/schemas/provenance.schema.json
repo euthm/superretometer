@@ -163,12 +163,28 @@
                     "type": "object",
                     "properties": {
                       "path": { "type": "string" },
-                      "remote": { "type": "string", "format": "uri" },
+                      "repo_remote_sanitized": { "type": "string", "description": "Sanitized remote URL (credentials stripped)" },
+                      "repo_remote_canonical": { "type": "string", "description": "Canonical repository identity" },
+                      "remote": { "type": "string", "description": "Deprecated. Use repo_remote_sanitized." },
                       "commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" }
                     },
                     "required": ["commit"]
                   },
-                  "description": "Submodule name → {path, remote, commit}"
+                  "description": "Claim-bearing submodule name → {path, repo_remote_sanitized, repo_remote_canonical, commit}"
+                },
+                "tested_submodule_pins": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "path": { "type": "string" },
+                      "repo_remote_sanitized": { "type": "string" },
+                      "repo_remote_canonical": { "type": "string" },
+                      "commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" }
+                    },
+                    "required": ["commit"]
+                  },
+                  "description": "Tested submodule state. Must match submodule_pins for PASS."
                 },
                 "test_run_id": {
                   "type": "string",

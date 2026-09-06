@@ -355,7 +355,10 @@ class ImplementationProvenance:
     worktree_diff_sha256: str = ""             # SHA256 of deterministic worktree diff (staged+unstaged+untracked)
 
     # ── Submodules ──
-    submodule_pins: dict[str, dict] = field(default_factory=dict)  # name → {path, remote, commit}
+    submodule_pins: dict[str, dict] = field(default_factory=dict)
+    # name → {path, repo_remote_sanitized, repo_remote_canonical, commit}
+    tested_submodule_pins: dict[str, dict] = field(default_factory=dict)
+    # name → {path, repo_remote_sanitized, repo_remote_canonical, commit}
 
     # ── Test identity (separated) ──
     test_run_id: str = ""                      # External runner/execution ID (e.g., GitHub Actions run)

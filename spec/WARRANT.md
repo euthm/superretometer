@@ -168,14 +168,23 @@ When worktree is dirty: `claim.worktree_diff_sha256 == tested_worktree_diff_sha2
 3. Commit invariant: tested_commit must equal claim.commit (mismatch → BLOCK)
 4. Worktree invariant: when dirty, tested_worktree_diff must equal claim diff (mismatch → BLOCK)
 5. Exit code: must be 0 (non-zero → BLOCK, absent → UNKNOWN)
+6. Timestamp: must be valid ISO 8601 (missing → UNKNOWN, invalid → BLOCK)
+
+**Gate 5 — Falsifiability (N-IMPL-FALSIFY):** At least one FalsifiableValidator on the claim must have a non-empty `what_would_falsify`. This uses the existing `KnowledgeObject.validators` list — no duplication into ImplementationProvenance. Missing or empty falsifiers → UNKNOWN (UNGROUNDED). Present → PASS.
+
+**Gate 6 — Dependency (N-IMPL-DEPENDENCY):** Submodule/dependency state must be consistent between claim and tested state. Each submodule pin carries `repo_remote_sanitized`, `repo_remote_canonical`, and `commit`. The claim's `submodule_pins` must match `tested_submodule_pins` in set, canonical remote, and commit. Mismatch → BLOCK. Missing tested evidence → UNKNOWN. No submodules → PASS.
 
 ### Design-Bearing Semantics
 
 | Condition | Verdict |
 |-----------|---------|
-| All four gates PASS | **Design-bearing allowed** |
+| All six gates PASS | **Design-bearing allowed** |
 | At least one gate BLOCK | **Informative only** |
 | Any gate UNKNOWN | **Insufficiently established** |
+
+### Test Timestamp
+
+`test_timestamp` is provenance/audit metadata. Required for complete validation provenance. Must be valid ISO 8601. Not compared against Git commit timestamps (unreliable for causal ordering). Missing → UNKNOWN. Invalid format → BLOCK. No freshness/expiry semantics in v0.7.
 
 ### Remote Mismatch Rule (N-IMPL-REMOTE)
 

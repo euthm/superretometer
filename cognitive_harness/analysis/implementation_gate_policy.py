@@ -1,8 +1,8 @@
 # FILE: cognitive-harness/analysis/implementation_gate_policy.py
 """ImplementationGatePolicy — N-PROV for code implementation claims.
 
-Mirrors SimulationGatePolicy for claims about implemented code:
-  claim → commit → remote (MUST match scope-declared remote) → test run.
+Six gates for implementation-bearing claims:
+  provenance → scope → worktree → test → falsifiability → dependency
 
 Remote mismatch = BLOCK. The remote URL in the ImplementationProvenance
 must match the remote declared in the claim's scope or a scope-declared
@@ -10,7 +10,9 @@ allowlist.
 
 Normative rule (N-IMPL-PROV):
   An "implemented" claim is informative only unless the commit's remote
-  matches a scope-declared remote and a test run exists with passing result.
+  matches a scope-declared remote, worktree state is reproducible,
+  test evidence is complete, falsification criteria exist, and
+  dependency state is intact.
 """
 from __future__ import annotations
 import logging
@@ -18,7 +20,7 @@ import re
 from typing import Optional, Tuple
 from cognitive_harness.model.ko import (
     KnowledgeObject, GateStatus, GateResult, ScopeDeclaration,
-    ImplementationProvenance,
+    ImplementationProvenance, FalsifiableValidator,
 )
 from cognitive_harness.storage.interface import StorageInterface
 
@@ -135,6 +137,23 @@ def sanitize_remote(remote: str) -> str:
     return r
 
 
+def _sanitize_submodule_pins(pins: dict) -> dict:
+    """Sanitize submodule pins: strip credentials, normalize canonical remotes."""
+    result = {}
+    for name, pin in pins.items():
+        if not isinstance(pin, dict):
+            continue
+        p = dict(pin)
+        remote = p.get("remote", p.get("repo_remote_sanitized", ""))
+        p["repo_remote_sanitized"] = sanitize_remote(remote)
+        canon = p.get("repo_remote_canonical", "")
+        if not canon and remote:
+            canon = canonical_remote(remote)
+        p["repo_remote_canonical"] = canon
+        result[name] = p
+    return result
+
+
 class ImplementationGatePolicy:
     """Evaluates implementation provenance for code-bearing claims."""
 
@@ -160,6 +179,8 @@ class ImplementationGatePolicy:
                 scope=_gate("scope", GateStatus.BLOCK, "Claim KO not found."),
                 worktree=_gate("worktree", GateStatus.BLOCK, "Claim KO not found."),
                 test=_gate("test", GateStatus.BLOCK, "Claim KO not found."),
+                falsifiability=_gate("falsifiability", GateStatus.BLOCK, "Claim KO not found."),
+                dependency=_gate("dependency", GateStatus.BLOCK, "Claim KO not found."),
             )
 
         impl_prov = self._get_implementation_provenance(ko)
@@ -168,10 +189,14 @@ class ImplementationGatePolicy:
         scope = self._gate_scope(ko, impl_prov)
         worktree = self._gate_worktree(ko, impl_prov)
         test = self._gate_test(ko, impl_prov)
+        falsifiability = self._gate_falsifiability(ko, impl_prov)
+        dependency = self._gate_dependency(ko, impl_prov)
 
-        result = _report(claim_ko_id, provenance, scope, worktree, test)
+        result = _report(claim_ko_id, provenance, scope, worktree, test,
+                         falsifiability, dependency)
         result["design_bearing"] = all(
-            r["status"] == "pass" for r in [provenance, scope, worktree, test]
+            r["status"] == "pass" for r in [provenance, scope, worktree, test,
+                                            falsifiability, dependency]
         )
         return result
 
@@ -389,6 +414,18 @@ class ImplementationGatePolicy:
                 f"test_exit_code={prov.test_exit_code}. Tests did not pass.",
             )
 
+        # ── Timestamp ──
+        if not prov.test_timestamp:
+            return _gate(
+                "test", GateStatus.UNKNOWN,
+                "test_timestamp not recorded. Incomplete validation provenance.",
+            )
+        if not _is_valid_iso8601(prov.test_timestamp):
+            return _gate(
+                "test", GateStatus.BLOCK,
+                f"test_timestamp '{prov.test_timestamp}' is not valid ISO 8601.",
+            )
+
         # All evidence present and consistent
         evidence = [
             prov.test_run_id,
@@ -402,6 +439,112 @@ class ImplementationGatePolicy:
             f"command '{prov.test_command}', exit 0, "
             f"tested against {prov.tested_commit[:8]}…",
             evidence=evidence,
+        )
+
+    # ── Gate 5: Falsifiability ──────────────────────────────────────────
+    # N-IMPL-FALSIFY: at least one validator must declare what would falsify.
+    # Uses existing FalsifiableValidator model on the claim KO.
+
+    def _gate_falsifiability(
+        self, ko: KnowledgeObject, prov: ImplementationProvenance | None,
+    ) -> dict:
+        # No validators on the claim at all
+        if not ko.validators:
+            return _gate(
+                "falsifiability", GateStatus.UNKNOWN,
+                "No validators on claim. UNGROUNDED.",
+            )
+
+        # Check for at least one with non-empty what_would_falsify
+        for v in ko.validators:
+            if isinstance(v, FalsifiableValidator) and v.what_would_falsify:
+                return _gate(
+                    "falsifiability", GateStatus.PASS,
+                    f"Falsifier declared: {v.what_would_falsify[:100]}",
+                    evidence=[v.id],
+                )
+
+        # Validators exist but all have empty what_would_falsify
+        return _gate(
+            "falsifiability", GateStatus.UNKNOWN,
+            "Validators exist but none declare what would falsify. "
+            "Cannot establish falsifiability.",
+        )
+
+    # ── Gate 6: Dependency ──────────────────────────────────────────────
+    # N-IMPL-DEPENDENCY: submodule/dependency state must be consistent
+    # between claim and tested state.
+
+    def _gate_dependency(
+        self, ko: KnowledgeObject, prov: ImplementationProvenance | None,
+    ) -> dict:
+        if prov is None:
+            return _gate("dependency", GateStatus.BLOCK, "No provenance.")
+
+        claim_pins = prov.submodule_pins
+        tested_pins = prov.tested_submodule_pins
+
+        # No submodules → PASS
+        if not claim_pins:
+            return _gate(
+                "dependency", GateStatus.PASS,
+                "No submodules declared. Not applicable.",
+            )
+
+        # Claim has submodules but no tested evidence → UNKNOWN
+        if not tested_pins:
+            return _gate(
+                "dependency", GateStatus.UNKNOWN,
+                f"Claim declares {len(claim_pins)} submodule(s) but "
+                "no tested_submodule_pins. Cannot verify dependency state.",
+            )
+
+        # Set of submodule names must match
+        claim_names = set(claim_pins.keys())
+        tested_names = set(tested_pins.keys())
+        if claim_names != tested_names:
+            missing = claim_names - tested_names
+            extra = tested_names - claim_names
+            details = []
+            if missing:
+                details.append(f"missing tested pins: {missing}")
+            if extra:
+                details.append(f"unexpected tested pins: {extra}")
+            return _gate(
+                "dependency", GateStatus.BLOCK,
+                f"Submodule sets differ: {'; '.join(details)}.",
+            )
+
+        # Compare each pin
+        for name in claim_names:
+            c = claim_pins[name]
+            t = tested_pins[name]
+            c_canon = c.get("repo_remote_canonical", "")
+            t_canon = t.get("repo_remote_canonical", "")
+            c_commit = c.get("commit", "")
+            t_commit = t.get("commit", "")
+
+            # Canonical remote mismatch
+            if c_canon and t_canon and c_canon != t_canon:
+                return _gate(
+                    "dependency", GateStatus.BLOCK,
+                    f"Submodule '{name}': canonical remote mismatch "
+                    f"({c_canon} vs {t_canon}).",
+                )
+
+            # Commit mismatch
+            if c_commit and t_commit and c_commit != t_commit:
+                return _gate(
+                    "dependency", GateStatus.BLOCK,
+                    f"Submodule '{name}': commit mismatch "
+                    f"({c_commit[:8]} vs {t_commit[:8]}).",
+                )
+
+        return _gate(
+            "dependency", GateStatus.PASS,
+            f"All {len(claim_names)} submodule(s) verified consistent.",
+            evidence=[f"{n}: {claim_pins[n].get('repo_remote_canonical', '')}@{claim_pins[n].get('commit', '')[:8]}"
+                      for n in claim_names],
         )
 
     # ── Helpers ────────────────────────────────────────────────────────
@@ -477,7 +620,9 @@ class ImplementationGatePolicy:
                 commit=d.get("commit", ""),
                 worktree_clean=d.get("worktree_clean"),
                 worktree_diff_sha256=d.get("worktree_diff_sha256", ""),
-                submodule_pins={k: v for k, v in sp.items()},
+                submodule_pins=_sanitize_submodule_pins(sp),
+                tested_submodule_pins=_sanitize_submodule_pins(
+                    d.get("tested_submodule_pins", {})),
                 test_run_id=d.get("test_run_id", ""),
                 validator_ko_id=d.get("validator_ko_id", ""),
                 test_command=d.get("test_command", ""),
@@ -585,12 +730,32 @@ def _gate(name: str, status: GateStatus, reason: str, evidence: list[str] | None
 
 
 def _report(claim_ko_id: str, provenance: dict, scope: dict,
-           worktree: dict, test: dict) -> dict:
+           worktree: dict, test: dict,
+           falsifiability: dict, dependency: dict) -> dict:
     return {
         "claim_ko_id": claim_ko_id,
         "provenance": provenance,
         "scope": scope,
         "worktree": worktree,
         "test": test,
-        "design_bearing": all(r["status"] == "pass" for r in [provenance, scope, worktree, test]),
+        "falsifiability": falsifiability,
+        "dependency": dependency,
+        "design_bearing": all(r["status"] == "pass" for r in
+                              [provenance, scope, worktree, test,
+                               falsifiability, dependency]),
     }
+
+
+def _is_valid_iso8601(ts: str) -> bool:
+    """Minimal ISO 8601 validation: YYYY-MM-DDTHH:MM:SS[.fraction][Z/offset]."""
+    if not ts or not isinstance(ts, str):
+        return False
+    # Acceptable patterns:
+    # 2026-01-01T00:00:00Z
+    # 2026-01-01T00:00:00.123Z
+    # 2026-01-01T00:00:00+00:00
+    # 2026-01-01T00:00:00.123+02:00
+    return bool(re.match(
+        r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$',
+        ts
+    ))
