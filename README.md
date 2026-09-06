@@ -4,7 +4,7 @@
 
 ## Latest Release
 
-**v0.6.4** (candidate) — Direction-aware traversal + enumeration completeness (fail-closed).
+**v0.6.4** — Direction-aware traversal + enumeration completeness (fail-closed).
 [Release notes](docs/releases/v0.6.4.md) · [Changelog](CHANGELOG.md)
 
 An AI agent can produce plausible answers, run tests, and retain large amounts of

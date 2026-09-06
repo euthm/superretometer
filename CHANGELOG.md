@@ -2,7 +2,7 @@
 
 All notable changes to cognitive-harness (Superretometer).
 
-## [0.6.4] — 2025-09-06 (candidate)
+## [0.6.4] — 2026-09-06
 
 ### Added
 - `cognitive_harness.exceptions.IncompleteEnumerationError` — raised when FULL_REQUIRED analyses cannot guarantee complete graph enumeration
