@@ -816,6 +816,9 @@ class WarrantAnalyzer:
     # ── Helpers ─────────────────────────────────────────────────────────
 
     def _iter_all_kos(self):
-        s = self.storage  # type: ignore
-        if hasattr(s, '_kos'):
-            yield from s._kos.values()  # type: ignore
+        """Iterate all KOs via the public storage interface.
+
+        Uses list_all_kos() (v0.6.3+).  Callers must not reach into
+        internal storage details like _kos.
+        """
+        yield from self.storage.list_all_kos()
