@@ -96,10 +96,10 @@ Immutable snapshot: baseline_id, version, model_id, source_commit, parameter_set
 
 ImplementationGatePolicy is a cross-cutting warrant dimension for implementation-bearing claims. It operates alongside SimulationGatePolicy and covers code, configuration, and deployment claims.
 
-### The Three Gates
+### The Four Gates
 
 ```
-PROVENANCE  →  SCOPE  →  TEST  →  DESIGN-BEARING
+PROVENANCE  →  SCOPE  →  WORKTREE  →  TEST  →  DESIGN-BEARING
 ```
 
 Each gate evaluates independently. Status: PASS, BLOCK, or UNKNOWN.
@@ -125,17 +125,55 @@ Canonicalization normalizes transport syntax, not repository identity:
 | `https://github.com/euthm/foo.git` | `github.com/euthm/foo` |
 | `ssh://git@github.com/euthm/foo.git` | `github.com/euthm/foo` |
 
-**Gate 1 — Provenance (N-IMPL-PROV):** An "implemented" claim must trace to a specific commit on a canonical repository. The chain claim → commit → canonical remote must be complete. Branch is contextual metadata. Orphaned claims (no commit, no canonical remote) are informative only.
+### Worktree State
+
+**Code-state reproducibility** requires that the tested code exactly matches the claimed code state.
+
+- **worktree_clean = true**: the commit alone represents the tested state. Eligible for PASS.
+- **worktree_clean = false + worktree_diff_sha256 present**: dirty state is reproducibly identified but cannot PASS (UNKNOWN).
+- **worktree_clean = false + no diff hash**: tested state not reproducibly identified (BLOCK).
+- **worktree_clean = null/absent**: unobserved (UNKNOWN).
+
+**worktree_diff_sha256** normatively hashes a deterministic representation of all implementation-bearing deviations from HEAD: staged changes, unstaged changes, and untracked files. The hash must be reproducible from the same diff output.
+
+### Test Evidence Binding
+
+Test identity is separated into three distinct concepts:
+
+- **test_run_id**: external runner/execution identity (e.g., GitHub Actions run ID). Not a CH graph reference.
+- **validator_ko_id**: CH KnowledgeObject containing validation evidence. The only graph reference.
+- **test_result_sha256**: immutable hash of test output/report artifact.
+
+Test execution provenance requires:
+
+- **test_command**: exact command that was executed
+- **test_exit_code**: exit code (0 = success, required for PASS)
+- **tested_commit**: commit against which tests ran (must equal claim.commit)
+- **tested_worktree_diff_sha256**: worktree diff SHA at test time (must equal claim.worktree_diff_sha256 when dirty)
+- **test_timestamp**: ISO 8601 execution time
+
+**Invariant**: `claim.commit == tested_commit`. Mismatch → BLOCK.
+
+When worktree is dirty: `claim.worktree_diff_sha256 == tested_worktree_diff_sha256`. Mismatch → BLOCK.
+
+**Gate 1 — Provenance (N-IMPL-PROV):** An "implemented" claim must trace to a specific commit on a canonical repository. The chain claim → commit → canonical remote must be complete. Branch is contextual metadata.
 
 **Gate 2 — Scope (N-IMPL-SCOPE):** The provenance's `repo_remote_canonical` MUST match a scope-declared remote. Scope comparison uses canonical identity only; raw transport URLs are never compared directly. Remote mismatch = BLOCK.
 
-**Gate 3 — Test (N-IMPL-TEST):** A test run must exist and be linked to the claim. If `test_run_id` resolves to a KO with `test_result_sha256`, the gate passes. Missing or unresolvable test run = BLOCK.
+**Gate 3 — Worktree (N-IMPL-WORKTREE):** Code state must be reproducibly identified. Clean commit → PASS. Dirty with diff hash → UNKNOWN. Dirty without diff → BLOCK. Unobserved → UNKNOWN.
+
+**Gate 4 — Test (N-IMPL-TEST):** Complete test evidence chain is required. The gate checks:
+1. Evidence presence: validator_ko_id, test_run_id, test_command, test_result_sha256 must all be present (missing → UNKNOWN)
+2. Validator resolution: validator_ko_id must resolve to a KO in the graph (missing → UNKNOWN)
+3. Commit invariant: tested_commit must equal claim.commit (mismatch → BLOCK)
+4. Worktree invariant: when dirty, tested_worktree_diff must equal claim diff (mismatch → BLOCK)
+5. Exit code: must be 0 (non-zero → BLOCK, absent → UNKNOWN)
 
 ### Design-Bearing Semantics
 
 | Condition | Verdict |
 |-----------|---------|
-| All three gates PASS | **Design-bearing allowed** |
+| All four gates PASS | **Design-bearing allowed** |
 | At least one gate BLOCK | **Informative only** |
 | Any gate UNKNOWN | **Insufficiently established** |
 

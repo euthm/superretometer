@@ -149,7 +149,8 @@ class ImplementationGatePolicy:
         Gates:
           provenance  — commit chain present and complete
           scope       — remote matches scope-declared remote
-          test        — test run exists with passing result
+          worktree    — code state is reproducibly identified
+          test        — test evidence is complete and matches claim state
         """
         ko = self.storage.get_ko(claim_ko_id)
         if ko is None:
@@ -157,6 +158,7 @@ class ImplementationGatePolicy:
                 claim_ko_id,
                 provenance=_gate("provenance", GateStatus.BLOCK, "Claim KO not found."),
                 scope=_gate("scope", GateStatus.BLOCK, "Claim KO not found."),
+                worktree=_gate("worktree", GateStatus.BLOCK, "Claim KO not found."),
                 test=_gate("test", GateStatus.BLOCK, "Claim KO not found."),
             )
 
@@ -164,11 +166,12 @@ class ImplementationGatePolicy:
 
         provenance = self._gate_provenance(ko, impl_prov)
         scope = self._gate_scope(ko, impl_prov)
+        worktree = self._gate_worktree(ko, impl_prov)
         test = self._gate_test(ko, impl_prov)
 
-        result = _report(claim_ko_id, provenance, scope, test)
+        result = _report(claim_ko_id, provenance, scope, worktree, test)
         result["design_bearing"] = all(
-            r["status"] == "pass" for r in [provenance, scope, test]
+            r["status"] == "pass" for r in [provenance, scope, worktree, test]
         )
         return result
 
@@ -248,8 +251,53 @@ class ImplementationGatePolicy:
             evidence=[prov_canon],
         )
 
-    # ── Gate 3: Test ──────────────────────────────────────────────────
-    # N-IMPL-TEST: a test run must exist with a passing result.
+    # ── Gate 3: Worktree ────────────────────────────────────────────────
+    # N-IMPL-WORKTREE: code state must be reproducibly identified.
+
+    def _gate_worktree(
+        self, ko: KnowledgeObject, prov: ImplementationProvenance | None,
+    ) -> dict:
+        if prov is None:
+            return _gate(
+                "worktree", GateStatus.BLOCK,
+                "No implementation provenance to check worktree state.",
+            )
+
+        clean = prov.worktree_clean
+        diff_hash = prov.worktree_diff_sha256
+
+        # Clean = True: exact commit represents tested state
+        if clean is True:
+            return _gate(
+                "worktree", GateStatus.PASS,
+                f"Clean worktree: commit {prov.commit[:8]}… represents exact code state.",
+                evidence=[prov.commit],
+            )
+
+        # Dirty with diff hash: state identified but not clean
+        if clean is False and diff_hash:
+            return _gate(
+                "worktree", GateStatus.UNKNOWN,
+                f"Dirty worktree with diff snapshot ({diff_hash[:8]}…). "
+                "State is identified but not a clean commit — cannot PASS.",
+            )
+
+        # Dirty without diff hash: BLOCK
+        if clean is False and not diff_hash:
+            return _gate(
+                "worktree", GateStatus.BLOCK,
+                "Dirty worktree without diff hash. "
+                "Tested code state cannot be reproducibly identified.",
+            )
+
+        # None/unobserved: UNKNOWN
+        return _gate(
+            "worktree", GateStatus.UNKNOWN,
+            "Worktree state not observed. Cannot establish code-state reproducibility.",
+        )
+
+    # ── Gate 4: Test ────────────────────────────────────────────────────
+    # N-IMPL-TEST: complete test evidence chain, validated against exact state.
 
     def _gate_test(
         self, ko: KnowledgeObject, prov: ImplementationProvenance | None,
@@ -260,29 +308,100 @@ class ImplementationGatePolicy:
                 "No implementation provenance to verify test.",
             )
 
+        # ── Required evidence presence checks ──
+        # validator_ko_id absent → UNKNOWN
+        if not prov.validator_ko_id:
+            return _gate(
+                "test", GateStatus.UNKNOWN,
+                "No validator_ko_id. No CH evidence KO linked to this claim.",
+            )
+
+        # test_run_id absent → UNKNOWN
         if not prov.test_run_id:
             return _gate(
-                "test", GateStatus.BLOCK,
-                "No test_run_id in implementation provenance. "
-                "Cannot verify implementation passes tests.",
+                "test", GateStatus.UNKNOWN,
+                "No test_run_id. External runner identity missing.",
             )
 
-        if prov.test_run_id and not self.storage.get_ko(prov.test_run_id):
+        # test_command absent → UNKNOWN
+        if not prov.test_command:
+            return _gate(
+                "test", GateStatus.UNKNOWN,
+                "No test_command. Test execution command not recorded.",
+            )
+
+        # test_result_sha256 absent → UNKNOWN
+        if not prov.test_result_sha256:
+            return _gate(
+                "test", GateStatus.UNKNOWN,
+                "No test_result_sha256. Test result artifact not captured.",
+            )
+
+        # ── validator KO resolution ──
+        validator = self.storage.get_ko(prov.validator_ko_id)
+        if not validator:
+            return _gate(
+                "test", GateStatus.UNKNOWN,
+                f"validator_ko_id '{prov.validator_ko_id}' not found in graph. "
+                "Evidence KO must exist.",
+            )
+
+        # ── Commit binding invariant ──
+        if not prov.tested_commit:
+            return _gate(
+                "test", GateStatus.UNKNOWN,
+                "No tested_commit. Cannot verify tests ran against claim commit.",
+            )
+
+        if prov.tested_commit != prov.commit:
             return _gate(
                 "test", GateStatus.BLOCK,
-                f"Test run KO '{prov.test_run_id}' not found in graph.",
+                f"tested_commit '{prov.tested_commit[:8]}…' != claim commit "
+                f"'{prov.commit[:8]}…'. Tests ran against different revision.",
             )
 
-        if prov.test_result_sha256:
+        # ── Worktree state binding ──
+        if prov.worktree_clean is False:
+            # Dirty: claim diff must match tested diff
+            if not prov.tested_worktree_diff_sha256:
+                return _gate(
+                    "test", GateStatus.BLOCK,
+                    "Dirty worktree but no tested_worktree_diff_sha256. "
+                    "Cannot verify tests ran against same dirty state.",
+                )
+            if prov.tested_worktree_diff_sha256 != prov.worktree_diff_sha256:
+                return _gate(
+                    "test", GateStatus.BLOCK,
+                    "tested_worktree_diff != claim worktree_diff. "
+                    "Tests ran against different code state.",
+                )
+
+        # ── Exit code ──
+        if prov.test_exit_code is None:
             return _gate(
-                "test", GateStatus.PASS,
-                f"Test run {prov.test_run_id} with result SHA256 {prov.test_result_sha256[:16]}…",
-                evidence=[prov.test_run_id, prov.test_result_sha256],
+                "test", GateStatus.UNKNOWN,
+                "test_exit_code not recorded. Cannot determine pass/fail.",
             )
 
+        if prov.test_exit_code != 0:
+            return _gate(
+                "test", GateStatus.BLOCK,
+                f"test_exit_code={prov.test_exit_code}. Tests did not pass.",
+            )
+
+        # All evidence present and consistent
+        evidence = [
+            prov.test_run_id,
+            prov.validator_ko_id,
+            prov.test_result_sha256[:16] + "…",
+            f"exit_code: {prov.test_exit_code}",
+        ]
         return _gate(
-            "test", GateStatus.UNKNOWN,
-            f"Test run {prov.test_run_id} exists but has no result SHA256.",
+            "test", GateStatus.PASS,
+            f"Complete test evidence: run {prov.test_run_id}, "
+            f"command '{prov.test_command}', exit 0, "
+            f"tested against {prov.tested_commit[:8]}…",
+            evidence=evidence,
         )
 
     # ── Helpers ────────────────────────────────────────────────────────
@@ -356,9 +475,17 @@ class ImplementationGatePolicy:
                 repo_path=d.get("repo_path", ""),
                 branch=d.get("branch", ""),
                 commit=d.get("commit", ""),
+                worktree_clean=d.get("worktree_clean"),
+                worktree_diff_sha256=d.get("worktree_diff_sha256", ""),
                 submodule_pins={k: v for k, v in sp.items()},
                 test_run_id=d.get("test_run_id", ""),
+                validator_ko_id=d.get("validator_ko_id", ""),
+                test_command=d.get("test_command", ""),
+                test_exit_code=d.get("test_exit_code"),
                 test_result_sha256=d.get("test_result_sha256", ""),
+                tested_commit=d.get("tested_commit", ""),
+                tested_worktree_diff_sha256=d.get("tested_worktree_diff_sha256", ""),
+                test_timestamp=d.get("test_timestamp", ""),
                 session_id=d.get("session_id", ""),
                 epf_ready_id=d.get("epf_ready_id", ""),
             )
@@ -457,11 +584,13 @@ def _gate(name: str, status: GateStatus, reason: str, evidence: list[str] | None
     }
 
 
-def _report(claim_ko_id: str, provenance: dict, scope: dict, test: dict) -> dict:
+def _report(claim_ko_id: str, provenance: dict, scope: dict,
+           worktree: dict, test: dict) -> dict:
     return {
         "claim_ko_id": claim_ko_id,
         "provenance": provenance,
         "scope": scope,
+        "worktree": worktree,
         "test": test,
-        "design_bearing": all(r["status"] == "pass" for r in [provenance, scope, test]),
+        "design_bearing": all(r["status"] == "pass" for r in [provenance, scope, worktree, test]),
     }

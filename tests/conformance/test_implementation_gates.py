@@ -94,32 +94,19 @@ def test_incomplete_impl_provenance(storage):
 # ================================================================
 
 def test_remote_mismatch_block(storage):
-    """An 'implemented' claim on a remote not declared in scope → BLOCK.
-
-    This IS the CP-007 test scenario: the implementation commits exist
-    on antares-pilot/hrrm but the claim's scope declares a different remote.
-    """
+    """An 'implemented' claim on a remote not declared in scope → BLOCK."""
     policy = ImplementationGatePolicy(storage)
     prov = {
-        "repo_remote": "git@github.com:euthm/antares-pilot.git",
-        "repo_path": "/home/egiuth/antares-pilot/hrrm",
-        "branch": "cp-007-impl",
+        "repo_remote_canonical": "github.com/example/antares-pilot",
         "commit": "60a5dc881d8f39ab8365b4fc9c9b93f4b0d47dce",
-        "test_run_id": "test-cp007",
+        "worktree_clean": True,
     }
     storage.create_ko(mk_impl_claim(
         "claim-remote-mismatch",
-        "CP-007 agent identity implemented",
+        "Remote not in scope",
         impl_prov=prov,
-        declared_remotes=["git@github.com:euthm/superretometer.git"],
+        declared_remotes=["github.com/example/superretometer"],
     ))
-    test_ko = KnowledgeObject(
-        id="test-cp007", type=KOType.EVIDENCE_ITEM, title="CP-007 test run",
-        content="", truth_category=TruthCategory.VALIDATION_RESULT,
-        epistemic_status=EpistemicStatus.VALIDATED, confidence=ConfidenceLevel.HIGH,
-        provenance=Provenance(source="pytest", author="ci", independent=True),
-    )
-    storage.create_ko(test_ko)
     result = policy.evaluate_gates("claim-remote-mismatch")
     assert result["scope"]["status"] == "block", f"Expected BLOCK, got: {result['scope']['reason']}"
     assert not result["design_bearing"]
@@ -130,15 +117,22 @@ def test_remote_mismatch_block(storage):
 # ================================================================
 
 def test_remote_match_pass(storage):
+    """With complete test evidence, remote match → all gates PASS."""
     policy = ImplementationGatePolicy(storage)
-    remote = "git@github.com:euthm/superretometer.git"
+    remote = "github.com/example/project"
+    commit = "a1b2c3d4e5f6"
     prov = {
-        "repo_remote": remote,
-        "repo_path": "/home/egiuth/euthm/superretometer",
+        "repo_remote_canonical": remote,
+        "commit": commit,
         "branch": "implementation-provenance",
-        "commit": "a1b2c3d4e5f6",
+        "worktree_clean": True,
         "test_run_id": "test-pass",
+        "validator_ko_id": "validator-pass",
+        "test_command": "pytest -v",
+        "test_exit_code": 0,
         "test_result_sha256": "deadbeef" * 8,
+        "tested_commit": commit,
+        "test_timestamp": "2026-01-01T00:00:00Z",
     }
     storage.create_ko(mk_impl_claim(
         "claim-remote-match",
@@ -146,16 +140,11 @@ def test_remote_match_pass(storage):
         impl_prov=prov,
         declared_remotes=[remote],
     ))
-    test_ko = KnowledgeObject(
-        id="test-pass", type=KOType.EVIDENCE_ITEM, title="Test run",
-        content="", truth_category=TruthCategory.VALIDATION_RESULT,
-        epistemic_status=EpistemicStatus.VALIDATED, confidence=ConfidenceLevel.HIGH,
-        provenance=Provenance(source="pytest", author="ci", independent=True),
-    )
-    storage.create_ko(test_ko)
+    storage.create_ko(_mk_validator("validator-pass"))
     result = policy.evaluate_gates("claim-remote-match")
     assert result["provenance"]["status"] == "pass"
     assert result["scope"]["status"] == "pass"
+    assert result["worktree"]["status"] == "pass"
     assert result["test"]["status"] == "pass"
     assert result["design_bearing"]
 
@@ -165,22 +154,21 @@ def test_remote_match_pass(storage):
 # ================================================================
 
 def test_missing_test_run(storage):
+    """No test_run_id → test gate UNKNOWN (not BLOCK — insufficient evidence)."""
     policy = ImplementationGatePolicy(storage)
-    remote = "git@github.com:euthm/superretometer.git"
     prov = {
-        "repo_remote": remote,
-        "repo_path": "/home/egiuth/euthm/superretometer",
-        "branch": "main",
+        "repo_remote_canonical": "github.com/example/project",
         "commit": "da827a9",
+        "worktree_clean": True,
     }
     storage.create_ko(mk_impl_claim(
         "claim-no-test",
         "No test run",
         impl_prov=prov,
-        declared_remotes=[remote],
+        declared_remotes=["github.com/example/project"],
     ))
     result = policy.evaluate_gates("claim-no-test")
-    assert result["test"]["status"] == "block"
+    assert result["test"]["status"] == "unknown"
     assert not result["design_bearing"]
 
 
@@ -192,26 +180,23 @@ def test_remote_normalization(storage):
     """Remote match should survive git@ → https normalization."""
     policy = ImplementationGatePolicy(storage)
     prov = {
-        "repo_remote": "https://github.com/euthm/superretometer.git",
-        "repo_path": "/home/egiuth/euthm/superretometer",
-        "branch": "main",
+        "repo_remote_canonical": "github.com/example/project",
         "commit": "da827a9",
+        "worktree_clean": True,
         "test_run_id": "test-norm",
+        "validator_ko_id": "validator-norm",
+        "test_command": "pytest",
+        "test_exit_code": 0,
         "test_result_sha256": "cafe" * 16,
+        "tested_commit": "da827a9",
     }
     storage.create_ko(mk_impl_claim(
         "claim-normalize",
         "HTTPS remote matches git@ declaration",
         impl_prov=prov,
-        declared_remotes=["git@github.com:euthm/superretometer.git"],
+        declared_remotes=["git@github.com:example/project.git"],
     ))
-    test_ko = KnowledgeObject(
-        id="test-norm", type=KOType.EVIDENCE_ITEM, title="Test run",
-        content="", truth_category=TruthCategory.VALIDATION_RESULT,
-        epistemic_status=EpistemicStatus.VALIDATED, confidence=ConfidenceLevel.HIGH,
-        provenance=Provenance(source="pytest", author="ci", independent=True),
-    )
-    storage.create_ko(test_ko)
+    storage.create_ko(_mk_validator("validator-norm"))
     result = policy.evaluate_gates("claim-normalize")
     assert result["scope"]["status"] == "pass", f"Normalization failed: {result['scope']['reason']}"
 
@@ -459,11 +444,16 @@ def test_impl_provenance_strips_credentials(storage):
 
 
 # ================================================================
-# Legacy test still validates backward compat with repo_remote field
+# Legacy test: backward compat with repo_remote field (D1.6)
+# Legacy provenance is incomplete → test gate UNKNOWN, not PASS
 # ================================================================
 
 def test_backward_compat_repo_remote_field(storage):
-    """Old claims using only repo_remote should still work via backward compat parsing."""
+    """Old claims using only repo_remote + partial test evidence → provenance/scope PASS, test UNKNOWN.
+
+    Legacy test provenance (test_run_id + test_result_sha256 without validator_ko_id,
+    tested_commit, test_command, test_exit_code) does NOT yield PASS under hardened semantics.
+    """
     policy = ImplementationGatePolicy(storage)
     prov = {
         "repo_remote": "git@github.com:example/project.git",
@@ -489,4 +479,237 @@ def test_backward_compat_repo_remote_field(storage):
     result = policy.evaluate_gates("claim-legacy")
     assert result["provenance"]["status"] == "pass"
     assert result["scope"]["status"] == "pass"
+    # Legacy test provenance is incomplete → UNKNOWN, not PASS
+    assert result["test"]["status"] == "unknown", \
+        f"Legacy test should be UNKNOWN under hardened semantics, got {result['test']['status']}"
+    assert not result["design_bearing"]
+
+
+# ================================================================
+# CH-IMPL-007: clean worktree + complete test chain → PASS
+# ================================================================
+
+def _mk_validator(ko_id):
+    """Create a validator KO for test evidence."""
+    return KnowledgeObject(
+        id=ko_id, type=KOType.EVIDENCE_ITEM, title="Validator KO",
+        content="", truth_category=TruthCategory.VALIDATION_RESULT,
+        epistemic_status=EpistemicStatus.VALIDATED, confidence=ConfidenceLevel.HIGH,
+        provenance=Provenance(source="pytest", author="ci", independent=True),
+    )
+
+
+def _mk_complete_prov(remote, commit, validator_id="validator-1",
+                       worktree_clean=True, worktree_diff="",
+                       tested_commit=None, tested_diff="",
+                       exit_code=0):
+    """Build a complete implementation provenance dict."""
+    if tested_commit is None:
+        tested_commit = commit
+    return {
+        "repo_remote_canonical": remote,
+        "commit": commit,
+        "worktree_clean": worktree_clean,
+        "worktree_diff_sha256": worktree_diff,
+        "test_run_id": "run-12345",
+        "validator_ko_id": validator_id,
+        "test_command": "pytest tests/ -v",
+        "test_exit_code": exit_code,
+        "test_result_sha256": "ff" * 32,
+        "tested_commit": tested_commit,
+        "tested_worktree_diff_sha256": tested_diff,
+        "test_timestamp": "2026-01-01T00:00:00Z",
+    }
+
+
+def test_ch_impl_007_complete_chain_pass(storage):
+    """Clean worktree + exact commit + matching complete test → all gates PASS."""
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    prov = _mk_complete_prov(remote, commit)
+    storage.create_ko(mk_impl_claim(
+        "claim-007",
+        "Complete evidence chain",
+        impl_prov=prov,
+        declared_remotes=[remote],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-007")
+    assert result["provenance"]["status"] == "pass"
+    assert result["scope"]["status"] == "pass"
+    assert result["worktree"]["status"] == "pass"
     assert result["test"]["status"] == "pass"
+    assert result["design_bearing"]
+
+
+# ================================================================
+# CH-IMPL-008: dirty worktree without diff hash → BLOCK
+# ================================================================
+
+def test_ch_impl_008_dirty_no_diff_block(storage):
+    """Dirty worktree without diff hash → worktree gate BLOCK."""
+    policy = ImplementationGatePolicy(storage)
+    prov = _mk_complete_prov("github.com/example/project", "abcdef1234567890",
+                              worktree_clean=False, worktree_diff="")
+    storage.create_ko(mk_impl_claim(
+        "claim-008", "Dirty no diff", impl_prov=prov,
+        declared_remotes=["github.com/example/project"],
+    ))
+    result = policy.evaluate_gates("claim-008")
+    assert result["worktree"]["status"] == "block"
+    assert not result["design_bearing"]
+
+
+# ================================================================
+# CH-IMPL-009: dirty worktree with diff hash → UNKNOWN (not PASS)
+# ================================================================
+
+def test_ch_impl_009_dirty_with_diff_unknown(storage):
+    """Dirty worktree with diff hash → worktree gate UNKNOWN, never PASS."""
+    policy = ImplementationGatePolicy(storage)
+    diff_hash = "aa" * 32
+    prov = _mk_complete_prov("github.com/example/project", "abcdef1234567890",
+                              worktree_clean=False, worktree_diff=diff_hash,
+                              tested_diff=diff_hash)
+    storage.create_ko(mk_impl_claim(
+        "claim-009", "Dirty with diff", impl_prov=prov,
+        declared_remotes=["github.com/example/project"],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-009")
+    assert result["worktree"]["status"] == "unknown"
+    assert result["worktree"]["status"] != "pass"
+
+
+# ================================================================
+# CH-IMPL-010: claim commit != tested_commit → BLOCK
+# ================================================================
+
+def test_ch_impl_010_commit_mismatch_block(storage):
+    """tested_commit != claim.commit → test gate BLOCK."""
+    policy = ImplementationGatePolicy(storage)
+    prov = _mk_complete_prov("github.com/example/project", "aaaaaaaaaaaaaaaa",
+                              tested_commit="bbbbbbbbbbbbbbbb")
+    storage.create_ko(mk_impl_claim(
+        "claim-010", "Commit mismatch", impl_prov=prov,
+        declared_remotes=["github.com/example/project"],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-010")
+    assert result["test"]["status"] == "block"
+    assert not result["design_bearing"]
+
+
+# ================================================================
+# CH-IMPL-011: dirty diff mismatch → BLOCK
+# ================================================================
+
+def test_ch_impl_011_dirty_diff_mismatch_block(storage):
+    """claim dirty diff != tested dirty diff → test gate BLOCK."""
+    policy = ImplementationGatePolicy(storage)
+    prov = _mk_complete_prov("github.com/example/project", "abcdef1234567890",
+                              worktree_clean=False, worktree_diff="aa" * 32,
+                              tested_diff="bb" * 32)
+    storage.create_ko(mk_impl_claim(
+        "claim-011", "Dirty diff mismatch", impl_prov=prov,
+        declared_remotes=["github.com/example/project"],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-011")
+    assert result["test"]["status"] == "block"
+
+
+# ================================================================
+# CH-IMPL-012: test_exit_code != 0 → BLOCK
+# ================================================================
+
+def test_ch_impl_012_nonzero_exit_block(storage):
+    """test_exit_code != 0 → test gate BLOCK."""
+    policy = ImplementationGatePolicy(storage)
+    prov = _mk_complete_prov("github.com/example/project", "abcdef1234567890",
+                              exit_code=1)
+    storage.create_ko(mk_impl_claim(
+        "claim-012", "Failed tests", impl_prov=prov,
+        declared_remotes=["github.com/example/project"],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-012")
+    assert result["test"]["status"] == "block"
+
+
+# ================================================================
+# CH-IMPL-013: result hash exists but command missing → never PASS
+# ================================================================
+
+def test_ch_impl_013_no_command_unknown(storage):
+    """test_command missing → test gate UNKNOWN, never PASS."""
+    policy = ImplementationGatePolicy(storage)
+    prov = _mk_complete_prov("github.com/example/project", "abcdef1234567890")
+    prov["test_command"] = ""
+    storage.create_ko(mk_impl_claim(
+        "claim-013", "No command", impl_prov=prov,
+        declared_remotes=["github.com/example/project"],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-013")
+    assert result["test"]["status"] == "unknown"
+    assert result["test"]["status"] != "pass"
+
+
+# ================================================================
+# CH-IMPL-014: test_run_id exists but validator_ko_id absent → never PASS
+# ================================================================
+
+def test_ch_impl_014_no_validator_unknown(storage):
+    """validator_ko_id absent → test gate UNKNOWN, never PASS."""
+    policy = ImplementationGatePolicy(storage)
+    prov = _mk_complete_prov("github.com/example/project", "abcdef1234567890",
+                              validator_id="")
+    storage.create_ko(mk_impl_claim(
+        "claim-014", "No validator", impl_prov=prov,
+        declared_remotes=["github.com/example/project"],
+    ))
+    result = policy.evaluate_gates("claim-014")
+    assert result["test"]["status"] == "unknown"
+
+
+# ================================================================
+# CH-IMPL-015: validator exists but test_run_id absent → never PASS
+# ================================================================
+
+def test_ch_impl_015_no_test_run_unknown(storage):
+    """test_run_id absent → test gate UNKNOWN, never PASS."""
+    policy = ImplementationGatePolicy(storage)
+    prov = _mk_complete_prov("github.com/example/project", "abcdef1234567890")
+    prov["test_run_id"] = ""
+    storage.create_ko(mk_impl_claim(
+        "claim-015", "No test run", impl_prov=prov,
+        declared_remotes=["github.com/example/project"],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-015")
+    assert result["test"]["status"] == "unknown"
+
+
+# ================================================================
+# CH-IMPL-016: complete successful validation → PASS
+# ================================================================
+
+def test_ch_impl_016_complete_success(storage):
+    """All evidence present and consistent → all gates PASS, design-bearing."""
+    policy = ImplementationGatePolicy(storage)
+    remote = "github.com/example/project"
+    commit = "abcdef1234567890"
+    prov = _mk_complete_prov(remote, commit)
+    storage.create_ko(mk_impl_claim(
+        "claim-016", "Full validation", impl_prov=prov,
+        declared_remotes=[remote],
+    ))
+    storage.create_ko(_mk_validator("validator-1"))
+    result = policy.evaluate_gates("claim-016")
+    assert result["provenance"]["status"] == "pass"
+    assert result["scope"]["status"] == "pass"
+    assert result["worktree"]["status"] == "pass"
+    assert result["test"]["status"] == "pass"
+    assert result["design_bearing"]
