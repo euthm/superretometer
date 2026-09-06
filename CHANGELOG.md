@@ -14,7 +14,7 @@ All notable changes to cognitive-harness (Superretometer).
 - MCP `serverInfo.version` now reports actual package version (was hardcoded `0.1.0`)
 - MCP `orientation` uses `list_all_kos()` instead of private `_kos()`
 - MCP `open_tensions` uses public iteration (was calling nonexistent `_list_tensions()`)
-- MCP `propose_thread` returns `NotImplementedError` (was calling nonexistent `propose_thread` on ConsumerAPI)
+- MCP `propose_thread` removed from advertised tool surface (no ConsumerAPI backing exists)
 - MCP `propose_ko` now passes `viewpoints` parameter (was missing required arg)
 - MCP `propose_evidence` now passes `claim_id` (was passing `claim_ko_id`)
 - `transports/mcp/server.py` becomes deprecated compatibility shim

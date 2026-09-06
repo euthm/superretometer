@@ -7,8 +7,6 @@
 **v0.6.4** — Direction-aware traversal + enumeration completeness (fail-closed).
 [Release notes](docs/releases/v0.6.4.md) · [Changelog](CHANGELOG.md)
 
-**v0.6.5** — Packaged MCP server, CLI, and distribution. [Changelog](CHANGELOG.md)
-
 An AI agent can produce plausible answers, run tests, and retain large amounts of
 memory. That does not mean its conclusions follow from the evidence.
 
@@ -320,7 +318,7 @@ is not endorsed by the original authors. See `docs/` for detailed attribution.
 
 ## Project status
 
-v0.6.5 — Packaged MCP server, CLI, and distribution.
+v0.6.5 candidate — Packaged MCP server, CLI, and distribution. [PR #8](https://github.com/euthm/superretometer/pull/8)
 v0.6.4 — Direction-aware traversal + enumeration completeness.
 v0.1.0 — First public release. Specification and reference implementation are
 stable. The conformance suite defines the behavioral contract. Breaking changes
