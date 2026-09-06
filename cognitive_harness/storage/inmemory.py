@@ -470,7 +470,7 @@ class InMemoryStorage(StorageInterface):
     def list_threads(self):
         return list(getattr(self, '_threads', {}).values())
 
-    # ── Compatibility: _kos() for WarrantAnalyzer ─────────────────────
+    # ── Iteration (v0.6.3) ────────────────────────────────────────────
 
-    def _kos(self):
+    def list_all_kos(self) -> list[KnowledgeObject]:
         return list(self._kos.values())

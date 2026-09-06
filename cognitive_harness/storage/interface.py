@@ -133,3 +133,14 @@ class StorageInterface(ABC):
     @abstractmethod
     def get_dataset(self, dataset_id: str) -> Dataset | None:
         ...
+
+    # ── Iteration (v0.6.3) ─────────────────────────────────────────────
+    @abstractmethod
+    def list_all_kos(self) -> list[KnowledgeObject]:
+        """Return all KnowledgeObjects regardless of status, scope, or viewpoint.
+
+        Used by WarrantAnalyzer.detect_all_anti_patterns() and other
+        graph-level analyses that need every KO.  Must not depend on
+        internal storage details (no _kos attribute access by callers).
+        """
+        ...
