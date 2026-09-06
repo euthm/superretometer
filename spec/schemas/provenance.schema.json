@@ -1,0 +1,179 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cognitive-harness.org/schemas/provenance.json",
+  "title": "Provenance",
+  "description": "Source attribution and traceability for knowledge objects. Includes simulation and implementation provenance.",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/definitions/simulation_provenance" },
+    { "$ref": "#/definitions/implementation_provenance" },
+    { "$ref": "#/definitions/generic_provenance" }
+  ],
+  "definitions": {
+    "generic_provenance": {
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Origin of the knowledge (e.g., experiment, model, decision, code_repository)"
+        },
+        "author": {
+          "type": "string",
+          "description": "Creator or responsible party"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Revision number"
+        },
+        "derived_from": {
+          "type": ["string", "null"],
+          "description": "KO ID this provenance was derived from"
+        },
+        "independent": {
+          "type": "boolean",
+          "description": "Whether this provenance is independent of other evidence chains"
+        }
+      },
+      "required": ["source", "author"]
+    },
+    "simulation_provenance": {
+      "allOf": [
+        { "$ref": "#/definitions/generic_provenance" },
+        {
+          "properties": {
+            "provenance_type": {
+              "const": "simulation"
+            },
+            "simulation": {
+              "type": "object",
+              "required": [
+                "result_artifact",
+                "result_sha256",
+                "run_id",
+                "model_id",
+                "source_commit"
+              ],
+              "properties": {
+                "result_artifact": {
+                  "type": "string",
+                  "description": "Path or URL to the result file"
+                },
+                "result_sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "description": "SHA256 hash of the result artifact"
+                },
+                "run_id": {
+                  "type": "string",
+                  "description": "Unique identifier for the simulation run"
+                },
+                "parameter_set_id": {
+                  "type": "string",
+                  "description": "Identifier for the parameter set used"
+                },
+                "build_artifact": {
+                  "type": "string",
+                  "description": "Path to compiled model binary or build artifact"
+                },
+                "model_id": {
+                  "type": "string",
+                  "description": "Identifier of the model used"
+                },
+                "source_path": {
+                  "type": "string",
+                  "description": "File path to model source"
+                },
+                "source_commit": {
+                  "type": "string",
+                  "description": "Git commit hash of model source"
+                },
+                "source_version": {
+                  "type": "string",
+                  "description": "Version string of model source"
+                }
+              }
+            }
+          },
+          "required": ["provenance_type", "simulation"]
+        }
+      ]
+    },
+    "implementation_provenance": {
+      "allOf": [
+        { "$ref": "#/definitions/generic_provenance" },
+        {
+          "properties": {
+            "provenance_type": {
+              "const": "implementation"
+            },
+            "implementation": {
+              "type": "object",
+              "required": [
+                "repo_remote",
+                "repo_path",
+                "branch",
+                "commit"
+              ],
+              "properties": {
+                "repo_remote": {
+                  "type": "string",
+                  "description": "Canonical remote URL declared in scope (e.g., git@github.com:euthm/superretometer.git)",
+                  "format": "uri"
+                },
+                "repo_path": {
+                  "type": "string",
+                  "description": "Local or workspace path to the repository root"
+                },
+                "branch": {
+                  "type": "string",
+                  "description": "Git branch name"
+                },
+                "commit": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{7,40}$",
+                  "description": "Git commit hash (full or short)"
+                },
+                "submodule_pins": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "path": { "type": "string" },
+                      "remote": { "type": "string", "format": "uri" },
+                      "commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" }
+                    },
+                    "required": ["commit"]
+                  },
+                  "description": "Submodule name → {path, remote, commit}"
+                },
+                "test_run_id": {
+                  "type": "string",
+                  "description": "CI/CD run identifier or local test session ID"
+                },
+                "test_result_sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "description": "SHA256 of test output/report artifact"
+                },
+                "session_id": {
+                  "type": "string",
+                  "description": "CH session ID linking to the orchestration context"
+                },
+                "epf_ready_id": {
+                  "type": "string",
+                  "description": "EPF READY feature definition ID"
+                }
+              }
+            }
+          },
+          "required": ["provenance_type", "implementation"]
+        }
+      ]
+    }
+  }
+}

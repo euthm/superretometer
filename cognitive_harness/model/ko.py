@@ -327,6 +327,23 @@ class SimulationProvenance:
 
 
 @dataclass
+class ImplementationProvenance:
+    """Provenance chain for an implementation claim (code, config, deployment).
+    Parallel to SimulationProvenance but tracks repo→commit→test rather than
+    model→run→result. Required for ImplementationGatePolicy N-PROV.
+    """
+    repo_remote: str = ""             # Canonical remote URL declared in scope
+    repo_path: str = ""               # Local/workspace path to repo root
+    branch: str = ""                  # Git branch name
+    commit: str = ""                  # Git commit hash
+    submodule_pins: dict[str, dict] = field(default_factory=dict)  # name → {path, remote, commit}
+    test_run_id: str = ""             # CI/CD run ID or local test session
+    test_result_sha256: str = ""      # SHA256 of test output/report
+    session_id: str = ""              # CH session ID
+    epf_ready_id: str = ""            # EPF READY feature definition ID
+
+
+@dataclass
 class FrozenBaseline:
     """Immutable snapshot of a simulation study."""
     baseline_id: str = field(default_factory=lambda: str(uuid.uuid4()))

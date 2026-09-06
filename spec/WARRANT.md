@@ -91,3 +91,39 @@ Warrant status is recomputed from graph + policy, not stored (N-RECOMPUTE).
 ### Frozen Baseline (N-BASELINE-IMMUTABLE)
 
 Immutable snapshot: baseline_id, version, model_id, source_commit, parameter_set_id, run_command, result_artifact, result_sha256, gate_report, allowed_claims, timestamp. Cannot be mutated. Material change produces new version.
+
+## ImplementationGatePolicy — Normative Rules (v0.7)
+
+ImplementationGatePolicy is a cross-cutting warrant dimension for implementation-bearing claims. It operates alongside SimulationGatePolicy and covers code, configuration, and deployment claims.
+
+### The Three Gates
+
+```
+PROVENANCE  →  SCOPE  →  TEST  →  DESIGN-BEARING
+```
+
+Each gate evaluates independently. Status: PASS, BLOCK, or UNKNOWN.
+
+**Gate 1 — Provenance (N-IMPL-PROV):** An "implemented" claim must trace to a specific commit on a specific branch of a named repository. The chain claim → commit → remote → branch must be complete. Orphaned claims (no commit, no remote) are informative only.
+
+**Gate 2 — Scope (N-IMPL-SCOPE):** The provenance's `repo_remote` MUST match a scope-declared remote. Remote mismatch = BLOCK. The scope must declare which remotes are authorized for this claim's domain. Normalization is applied: `git@github.com:user/repo.git` ≡ `https://github.com/user/repo.git`.
+
+**Gate 3 — Test (N-IMPL-TEST):** A test run must exist and be linked to the claim. If `test_run_id` resolves to a KO with `test_result_sha256`, the gate passes. Missing or unresolvable test run = BLOCK.
+
+### Design-Bearing Semantics
+
+| Condition | Verdict |
+|-----------|---------|
+| All three gates PASS | **Design-bearing allowed** |
+| At least one gate BLOCK | **Informative only** |
+| Any gate UNKNOWN | **Insufficiently established** |
+
+### Remote Mismatch Rule (N-IMPL-REMOTE)
+
+> An implementation claim is blocked if its provenance remote does not match any scope-declared remote.
+
+This prevents claims about code implemented on unauthorized or misidentified repositories. Example: a claim that "CP-007 is implemented" with commits on `antares-pilot/hrrm` but scope declaring `euthm/superretometer` as the authoritative remote → **BLOCK**.
+
+### UNGROUNDED Claims
+
+A claim that declares `what_would_falsify` validators but has no passing validator attached is displayed as **UNGROUNDED** in AIM reports. This is distinct from BLOCK — it means the claim is unfalsified, not necessarily false.
