@@ -327,6 +327,57 @@ class SimulationProvenance:
 
 
 @dataclass
+class ImplementationProvenance:
+    """Provenance chain for an implementation claim (code, config, deployment).
+    Parallel to SimulationProvenance but tracks repo→commit→test rather than
+    model→run→result. Required for ImplementationGatePolicy N-PROV.
+
+    Repository revision identity is canonical_remote + commit.
+    Branch is optional contextual metadata, not revision identity.
+
+    repo_remote_sanitized stores the observed transport locator with credentials
+    removed.  Never persist credential-bearing URLs.
+
+    Worktree state captures whether the tested code exactly matches the commit.
+    Test identity separates runner (external) from validator (CH graph).
+    """
+    # ── Repository identity ──
+    repo_remote_sanitized: str = ""            # Observed transport locator, credentials stripped
+    repo_remote_canonical: str = ""            # Normalized repository identity used for gating
+    repo_remote_raw: str = ""                  # Deprecated: renamed to repo_remote_sanitized
+    repo_remote: str = ""                      # Deprecated compat: normalized into canonical on parse
+    repo_path: str = ""                        # Local/workspace path to repo root
+    branch: str = ""                           # Git branch name (contextual, optional)
+    commit: str = ""                           # Git commit hash (revision identity)
+
+    # ── Worktree state ──
+    worktree_clean: bool | None = None         # True=clean, False=dirty, None=unobserved
+    worktree_diff_sha256: str = ""             # SHA256 of deterministic worktree diff (staged+unstaged+untracked)
+
+    # ── Submodules ──
+    submodule_pins: dict[str, dict] = field(default_factory=dict)
+    # name → {path, repo_remote_sanitized, repo_remote_canonical, commit}
+    tested_submodule_pins: dict[str, dict] = field(default_factory=dict)
+    # name → {path, repo_remote_sanitized, repo_remote_canonical, commit}
+
+    # ── Test identity (separated) ──
+    test_run_id: str = ""                      # External runner/execution ID (e.g., GitHub Actions run)
+    validator_ko_id: str = ""                  # CH KnowledgeObject ID containing validation evidence
+
+    # ── Test execution provenance ──
+    test_command: str = ""                     # Exact command that was executed
+    test_exit_code: int | None = None          # Exit code (0=success)
+    test_result_sha256: str = ""               # SHA256 of test output/report artifact
+    tested_commit: str = ""                    # Commit against which tests were run
+    tested_worktree_diff_sha256: str = ""      # Worktree diff SHA at test time
+    test_timestamp: str = ""                   # ISO 8601 timestamp of test execution
+
+    # ── Session linkage ──
+    session_id: str = ""                       # CH session ID
+    epf_ready_id: str = ""                     # EPF READY feature definition ID
+
+
+@dataclass
 class FrozenBaseline:
     """Immutable snapshot of a simulation study."""
     baseline_id: str = field(default_factory=lambda: str(uuid.uuid4()))

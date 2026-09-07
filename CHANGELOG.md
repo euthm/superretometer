@@ -2,6 +2,39 @@
 
 All notable changes to cognitive-harness (Superretometer).
 
+## [0.7.0] — 2026-09-06 (Candidate)
+
+### Added
+- `ImplementationProvenance` dataclass: 21 fields for code-bearing claims
+- `ImplementationGatePolicy`: six-gate warrant policy (provenance, scope, worktree,
+  test, falsifiability, dependency)
+- `canonical_remote()`: transport-agnostic repository identity normalization
+- `sanitize_remote()`: credential stripping for safe provenance storage
+- Worktree reproducibility: `worktree_clean`, `worktree_diff_sha256`
+- Test identity separation: `test_run_id` (runner), `validator_ko_id` (CH KO),
+  `test_result_sha256` (artifact)
+- Test execution provenance: `test_command`, `test_exit_code`, `tested_commit`,
+  `tested_worktree_diff_sha256`, `test_timestamp`
+- Dependency integrity: `submodule_pins`, `tested_submodule_pins` with canonical remotes
+- Falsifiability gate: reuses `KnowledgeObject.validators` / `FalsifiableValidator`
+- Timezone-aware ISO 8601 timestamp validation for portable provenance
+- 30 CH-IMPL conformance tests (CH-IMPL-001 through CH-IMPL-030)
+- `spec/schemas/provenance.schema.json`: `implementation_provenance` definition
+- `spec/WARRANT.md`: ImplementationGatePolicy normative rules
+
+### Changed
+- `repo_remote_raw` renamed to `repo_remote_sanitized` (credentials stripped before storage)
+- `repo_remote` field deprecated (backward compat maintained)
+- Test gate semantics hardened: requires complete evidence chain + exit 0 + commit match
+  + timezone-aware timestamp (legacy partial provenance → UNKNOWN, not PASS)
+- Provenance gate no longer requires branch (detached HEAD eligible)
+- Gate report now includes six gates: provenance, scope, worktree, test,
+  falsifiability, dependency
+
+### Deprecated
+- `repo_remote_raw` → use `repo_remote_sanitized`
+- `normalize_remote()` → use `canonical_remote()`
+
 ## [0.6.5] — 2026-09-06
 
 ### Added
