@@ -53,3 +53,21 @@
 ## Gate Status Canonical Definition
 
 PASS means independently grounded. UNKNOWN means explicitly assumed but not independently grounded. BLOCK means structurally or physically unwarranted. Only PASS can contribute to a design-bearing verdict.
+
+## ImplementationGatePolicy Concepts (v0.7)
+
+**ImplementationGatePolicy**: Three-gate evaluation (Provenance, Scope, Test) for implementation-bearing claims. All three gates must PASS for a claim to be design-bearing.
+
+**ImplementationProvenance**: Structured metadata for code implementation claims. Tracks `repo_remote`, `repo_path`, `branch`, `commit`, `submodule_pins`, `test_run_id`, `test_result_sha256`. Parallel to `SimulationProvenance` but oriented to repository→commit→test rather than model→run→result.
+
+**N-IMPL-PROV**: Normative rule — an "implemented" claim must trace to a specific commit on a specific branch of a named repository. Orphaned claims are informative only.
+
+**N-IMPL-SCOPE**: Normative rule — the provenance's `repo_remote` must match a scope-declared remote. Remote mismatch = BLOCK.
+
+**N-IMPL-TEST**: Normative rule — a test run must exist with a passing result. Missing or unresolvable test run = BLOCK.
+
+**N-IMPL-REMOTE**: Remote Mismatch Rule — an implementation claim is blocked if its provenance remote does not match any scope-declared remote. Normalization applies: `git@` and `https://` forms are equivalent.
+
+**Remote Mismatch**: The condition where an implementation claim's provenance references a repository remote that is not among the scope-declared authorized remotes. Results in a SCOPE gate BLOCK.
+
+**UNgrounded Claim**: A claim that declares falsifiability but has no passing validator. Displayed as UNGROUNDED in AIM reports. Distinct from BLOCK — unfalsified, not necessarily false.
