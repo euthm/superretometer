@@ -18,6 +18,8 @@ Warrant is computed by the WarrantAnalyzer over the justification graph.
 No text content is used for epistemic classification.
 """
 from __future__ import annotations
+import hashlib
+import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -408,16 +410,27 @@ class FrozenBaseline:
             self.content_hash = self._compute_hash()
 
     def _compute_hash(self) -> str:
-        """Compute SHA-256 over canonical identity fields."""
-        import hashlib
-        canonical = "|".join([
-            self.model_id,
-            self.source_commit,
-            self.parameter_set_id,
-            self.run_command,
-            self.result_artifact,
-            self.result_sha256,
-        ])
+        """Compute SHA-256 over the full baseline snapshot.
+
+        Uses deterministic JSON with field names to avoid delimiter
+        ambiguity.  All snapshot fields are hashed except content_hash
+        itself and the convenience flag immutable.
+        """
+        # Deterministic serialization: sorted keys, no extra whitespace
+        payload = {
+            "baseline_id": self.baseline_id,
+            "version": self.version,
+            "model_id": self.model_id,
+            "source_commit": self.source_commit,
+            "parameter_set_id": self.parameter_set_id,
+            "run_command": self.run_command,
+            "result_artifact": self.result_artifact,
+            "result_sha256": self.result_sha256,
+            "gate_report": self.gate_report,
+            "allowed_claims": self.allowed_claims,
+            "timestamp": self.timestamp,
+        }
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(canonical.encode()).hexdigest()
 
     def verify_integrity(self) -> bool:
