@@ -297,18 +297,21 @@ Graph B (independent sources) yields `WARRANTED`, despite identical content.
 
 The Cognitive Harness specification draws on several conceptual traditions:
 
-- **Gerrit Müller** — CAFCR (*A Cognitive Approach for Flexibly Coordinating
-  Reasoning*, 2004) inspired the Thread model and viewpoint-based reasoning
-  traversal. Superretometer adapts, not reproduces, these concepts.
+- **Gerrit Müller** — CAFCR (*CAFCR: A Multi-view Method for Embedded Systems
+  Architecting; Balancing Genericity and Specificity*, TU Delft, 2004;
+  CAFCR = Customer Objectives, Application, Functional, Conceptual, Realization)
+  inspired the Thread model and viewpoint-based reasoning traversal.
+  Superretometer adapts, not reproduces, these concepts.
 
 - **EPR criterion** — The Einstein-Podolsky-Rosen paper (1935) on "elements
   of physical reality" inspired the distinction between numerical completeness
   and independently grounded elements. A conclusion is warranted only if its
   premises are independently grounded.
 
-- **Harness-of-Harness** — Yan et al. (2026) inspired orchestration layer
-  separation, state preservation across reasoning trajectories, and progressive
-  disclosure.
+- **Harness-of-Harness** — Yan et al. (2026) is supporting literature on
+  orchestration layer separation, state preservation across reasoning
+  trajectories, and progressive disclosure. It does not validate Superretometer
+  mechanisms.
 
 - **ISO/IEC/IEEE 42010** — Architecture description principles inform the
   layering and stakeholder-viewpoint structure.
