@@ -112,10 +112,17 @@ def test_structural_counterfactual():
     storage_b.create_relation("ev2", "conc", RelationType.SUPPORTS)
 
     wa_b = WarrantAnalyzer(storage_b)
-    wr_b = wa_b.compute_warrant("conconc")
+    wr_b = wa_b.compute_warrant("conc")
 
     print(f"  Graph A (correlated): {wr_a.warrant_status.value}")
     print(f"  Graph B (independent): {wr_b.warrant_status.value}")
+
+    # Both graphs must resolve (not return UNRESOLVED from missing KO)
+    from cognitive_harness.model.ko import WarrantStatus
+    assert wr_a.warrant_status != WarrantStatus.UNRESOLVED, \
+        f"Graph A resolved to UNRESOLVED — check KO IDs"
+    assert wr_b.warrant_status != WarrantStatus.UNRESOLVED, \
+        f"Graph B resolved to UNRESOLVED — check KO IDs"
 
     # The key assertion: warrant differs based on structure, not content
     if wr_a.warrant_status != wr_b.warrant_status:
@@ -129,6 +136,12 @@ def test_structural_counterfactual():
         else:
             print(f"  NOTE: Same warrant status ({wr_a.warrant_status.value}), "
                   f"but independence analysis differs structurally")
+
+    # Graph B (independent evidence) should be warranted, Graph A should not
+    assert wr_b.warrant_status == WarrantStatus.WARRANTED, \
+        f"Graph B (independent evidence) should be WARRANTED, got {wr_b.warrant_status.value}"
+    assert wr_a.warrant_status != WarrantStatus.WARRANTED, \
+        f"Graph A (correlated evidence) should NOT be WARRANTED, got {wr_a.warrant_status.value}"
 
 
 def test_derived_warrant():

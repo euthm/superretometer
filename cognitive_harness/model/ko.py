@@ -379,7 +379,14 @@ class ImplementationProvenance:
 
 @dataclass
 class FrozenBaseline:
-    """Immutable snapshot of a simulation study."""
+    """Immutable snapshot of a simulation study.
+
+    Integrity is enforced via content_hash: a SHA-256 over the canonical
+    serialization of all identity fields.  After creation, the hash must
+    be recomputed and compared — if it diverges, the baseline was mutated.
+
+    The immutable flag is a convenience marker; the hash is the authority.
+    """
     baseline_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     version: int = 1
     model_id: str = ""
@@ -392,6 +399,32 @@ class FrozenBaseline:
     allowed_claims: list[str] = field(default_factory=list)
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     immutable: bool = True
+    # Integrity hash over canonical fields (set at creation)
+    content_hash: str = ""
+
+    def __post_init__(self):
+        """Compute content hash if not already set."""
+        if not self.content_hash:
+            self.content_hash = self._compute_hash()
+
+    def _compute_hash(self) -> str:
+        """Compute SHA-256 over canonical identity fields."""
+        import hashlib
+        canonical = "|".join([
+            self.model_id,
+            self.source_commit,
+            self.parameter_set_id,
+            self.run_command,
+            self.result_artifact,
+            self.result_sha256,
+        ])
+        return hashlib.sha256(canonical.encode()).hexdigest()
+
+    def verify_integrity(self) -> bool:
+        """Verify that identity fields haven't been mutated since creation."""
+        if not self.content_hash:
+            return False
+        return self._compute_hash() == self.content_hash
 
 
 @dataclass

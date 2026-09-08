@@ -68,6 +68,9 @@ class SimulationGatePolicy:
     def verify_baseline_integrity(self, baseline: FrozenBaseline) -> bool:
         if not baseline.immutable:
             return False
+        # Cryptographic integrity check: content hash must match
+        if not baseline.verify_integrity():
+            return False
         try:
             jr = json.loads(baseline.gate_report)
             return "claim_ko_id" in jr
