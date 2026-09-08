@@ -6,7 +6,7 @@ systems with progressive disclosure and state preservation.
 
 ## Influence on Cognitive Harness
 
-The following design aspects are inspired by HoH:
+The following design aspects are inspired by HoH as **supporting literature**:
 
 - **Orchestration layer separation** — distinct boundary between storage,
   reasoning, and orchestration layers
@@ -14,6 +14,8 @@ The following design aspects are inspired by HoH:
 - **Progressive disclosure** — revealing complexity only when needed
 
 These are general architectural principles, not proprietary implementations.
+Supporting literature is not empirical validation of Superretometer's warrant
+mechanisms or architectural claims.
 
 ## Cognitive Harness original contributions
 
