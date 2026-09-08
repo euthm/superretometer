@@ -10,9 +10,9 @@ Cognitive Harness addresses three problems in autonomous reasoning:
 
 | Source | Influence |
 |---|---|
-| Müller CAFCR (2004) | Lines/Threads of Reasoning, viewpoint traversal |
-| EPR (1935) | Completeness criterion → warrant concept |
-| Harness-of-Harness (2026) | Orchestration separation, progressive disclosure |
+| Müller CAFCR (TU Delft, 2004) — Customer Objectives, Application, Functional, Conceptual, Realization | Lines/Threads of Reasoning, viewpoint traversal |
+| EPR (1935) | Completeness criterion → warrant concept (analogy) |
+| Harness-of-Harness (2026) | Supporting literature on orchestration separation, progressive disclosure (not validation of Superretometer mechanisms) |
 | ISO/IEC/IEEE 42010 | Architecture description concepts |
 
 Cognitive Harness is an adaptation of ideas from these sources. It does not reproduce copyrighted material and is not endorsed by the original authors.
