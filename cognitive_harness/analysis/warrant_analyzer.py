@@ -79,19 +79,21 @@ class WarrantAnalyzer:
         result.anti_pattern_diagnoses = diagnoses
 
         # 3. Independence analysis for supporting evidence
-        indep = self._analyze_independence(path)
+        indep = self._analyze_independence(path, exclude_ids={conclusion_ko_id})
         result.independence = indep
 
         # 4. Classify each carrying KO
         independent = []
         dependent = []
 
+        missing_premises: list[str] = []
         for ko_id in path:
             if ko_id == conclusion_ko_id:
                 continue
             ko = self.storage.get_ko(ko_id)
             if ko is None:
                 dependent.append(ko_id)
+                missing_premises.append(ko_id)
                 continue
 
             if self._has_independent_grounding(ko, path):
@@ -113,7 +115,17 @@ class WarrantAnalyzer:
         if not has_premises:
             conc = self.storage.get_ko(conclusion_ko_id)
             if conc is not None:
+                self_grounding_ok = True
                 if conc.provenance is None or not conc.provenance.independent:
+                    self_grounding_ok = False
+                # Physical observations and sourced data require evidence to be self-grounded
+                if conc.truth_category in (
+                    TruthCategory.PHYSICAL_OBSERVATION,
+                    TruthCategory.SOURCED_MATERIAL_DATA,
+                ):
+                    if not conc.evidence_ids:
+                        self_grounding_ok = False
+                if not self_grounding_ok:
                     dependent.append(conclusion_ko_id)
                     result.dependent_kos = dependent
 
@@ -151,15 +163,25 @@ class WarrantAnalyzer:
 
         has_cycles = len(cycles) > 0
 
-        if has_structural_defect or has_cycles:
+        # Missing premises (KO referenced but not in storage) are structural defects
+        has_missing_premises = len(missing_premises) > 0
+
+        if has_structural_defect or has_cycles or has_missing_premises:
             result.warrant_status = WarrantStatus.UNWARRANTED
+            if has_missing_premises:
+                for mid in missing_premises:
+                    result.conditional_assumptions.append(
+                        f"Missing premise: {mid} (not found in storage)")
         elif dependent and not has_structural_defect:
             all_assumptions = all(
                 (self.storage.get_ko(kid) or KnowledgeObject()).truth_category == TruthCategory.ASSUMPTION
                 for kid in dependent
                 if self.storage.get_ko(kid)
             )
-            if all_assumptions:
+            # If all dependent KOs are missing from storage, can't classify as assumption
+            if not all_assumptions or not any(self.storage.get_ko(kid) for kid in dependent):
+                result.warrant_status = WarrantStatus.UNWARRANTED
+            elif all_assumptions:
                 result.warrant_status = WarrantStatus.CONDITIONALLY_WARRANTED
             else:
                 result.warrant_status = WarrantStatus.UNWARRANTED
@@ -674,11 +696,17 @@ class WarrantAnalyzer:
 
     # ── Independence analysis ───────────────────────────────────────────
 
-    def _analyze_independence(self, path: list[str]) -> IndependenceResult:
+    def _analyze_independence(
+        self, path: list[str], exclude_ids: set[str] | None = None,
+    ) -> IndependenceResult:
         """Compute independent provenance roots for every supporting evidence item.
         Evidence count is not source count.
+
+        exclude_ids: KO IDs to exclude from root counting (typically the conclusion itself).
         """
-        result = IndependenceResult(evidence_ids=path)
+        excl = exclude_ids or set()
+        evidence_only = [kid for kid in path if kid not in excl]
+        result = IndependenceResult(evidence_ids=evidence_only)
 
         # For each KO in the path, find its provenance roots
         root_sets: dict[str, set[str]] = {}
@@ -688,14 +716,13 @@ class WarrantAnalyzer:
 
         result.root_sets = root_sets
 
-        # Count distinct root sets (independent sources)
-        all_root_sets = set()
-        for roots in root_sets.values():
-            if roots:
-                all_root_sets.add(frozenset(roots))
+        # Count distinct individual provenance roots from evidence KOs only
+        all_roots: set[str] = set()
+        for ko_id in evidence_only:
+            all_roots |= root_sets.get(ko_id, set())
 
-        result.evidence_count = len(path)
-        result.independent_root_count = len(all_root_sets)
+        result.evidence_count = len(evidence_only)
+        result.independent_root_count = len(all_roots)
 
         # Find shared ancestors
         shared: dict[str, set[str]] = {}
