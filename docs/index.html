@@ -10,6 +10,19 @@
 </head>
 <body>
 
+<!-- ── Top nav ───────────────────────────────────────────── -->
+<nav class="site-nav">
+  <div class="wrap">
+    <a href="#worked-example">Worked example</a>
+    <a href="#quickstart">Quick start</a>
+    <a href="#limits">Limits</a>
+    <a href="#gates">Decision gates</a>
+    <a href="#status">What ships</a>
+    <a href="#foundations">Background</a>
+    <a href="https://github.com/euthm/superretometer" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</nav>
+
 <!-- ── Hero ──────────────────────────────────────────────── -->
 <header class="hero">
   <div class="wrap">
@@ -26,6 +39,13 @@
     <div class="principle" style="margin-top: 2.5rem;">
       <strong>A check that cannot fail is not evidence.</strong>
     </div>
+    <p class="hero-links">
+      <a href="#worked-example">See a worked example</a>
+      &nbsp;&middot;&nbsp;
+      <a href="#quickstart">Quick start</a>
+      &nbsp;&middot;&nbsp;
+      <a href="https://github.com/euthm/superretometer/tree/main/examples/engineering_model" target="_blank" rel="noopener">Runnable example on GitHub</a>
+    </p>
   </div>
 </header>
 
@@ -47,48 +67,207 @@
       &rarr; flux &rarr; torque &rarr; equilibrium &rarr; RPM
     </div>
     <p>
-      The chain is structurally valid. But which elements are
-      <em>independently grounded</em>?
-    </p>
-    <ul class="grounded-list">
-      <li><strong>Material properties</strong> — manufacturer datasheet</li>
-      <li><strong>Geometry</strong> — CAD model or physical measurement</li>
-      <li><strong>Design target</strong> — documented human decision</li>
-      <li><strong>Energy balance</strong> — conservation law</li>
-      <li><strong>Resistance &amp; inductance</strong> — physical measurement</li>
-      <li><strong>Parameter selected merely to make the simulation produce the desired result</strong> — <em>not independently grounded</em></li>
-    </ul>
-    <p>
-      Superretometer makes the last distinction explicit, structural,
+      The chain can be structurally valid and still not be independently
+      grounded. Superretometer makes that distinction explicit, structural,
       and computable.
     </p>
   </div>
 </section>
 
-<!-- ── Architecture ─────────────────────────────────────── -->
+<!-- ── Worked example ───────────────────────────────────── -->
+<section id="worked-example">
+  <div class="wrap">
+    <h2>Worked Example: Desired RPM, Blocked Warrant</h2>
+    <p>
+      Utility first. Here is the pattern Superretometer is built for —
+      <strong>claim &rarr; missing grounding &rarr; required action</strong>.
+    </p>
+
+    <div class="example-block">
+      <h3>Claim</h3>
+      <p>
+        A simulation reports that a machine reaches the desired operating
+        speed (RPM). Energy balance closes. Several checks pass. The result
+        looks ready to carry a design decision.
+      </p>
+
+      <h3>What the graph finds</h3>
+      <ul class="grounded-list">
+        <li><strong>Material properties</strong> — manufacturer datasheet</li>
+        <li><strong>Geometry</strong> — CAD model or physical measurement</li>
+        <li><strong>Design target</strong> — documented human decision</li>
+        <li><strong>Energy balance</strong> — conservation law</li>
+        <li><strong>A magnetic parameter calibrated to produce the desired field / RPM</strong> — <em>not independently grounded</em></li>
+      </ul>
+      <p>
+        The dependency that blocks warrant is explicit: a fitted parameter
+        whose training target is the same conclusion the model is asked to
+        justify (<code>CALIBRATED_TO_CONCLUSION</code>).
+      </p>
+
+      <h3>Why the warrant is blocked</h3>
+      <p>
+        Hitting the desired RPM is not the same as independently predicting
+        it. If a free parameter was tuned until the simulation matched the
+        target, the match is not independent evidence. Plausible is not
+        grounded. A check that cannot fail is not evidence.
+      </p>
+
+      <h3>Required action</h3>
+      <p>
+        Register an independent measurement or test dataset for that
+        parameter (or remove the claim from design-bearing status until
+        one exists). Then re-run warrant analysis. The four decision gates
+        below stay closed until the missing grounding is present.
+      </p>
+    </div>
+
+    <p>
+      Runnable counterpart:
+      <a href="https://github.com/euthm/superretometer/tree/main/examples/engineering_model" target="_blank" rel="noopener"><code>examples/engineering_model/</code></a>
+      &nbsp;&middot;&nbsp;
+      Tests:
+      <a href="https://github.com/euthm/superretometer/tree/main/tests" target="_blank" rel="noopener"><code>tests/</code></a>
+    </p>
+  </div>
+</section>
+
+<!-- ── Four decision gates ──────────────────────────────── -->
+<section id="gates">
+  <div class="wrap">
+    <h2>From Result to Design Warrant</h2>
+    <p>
+      A simulation result is a file on disk. It is not a conclusion. The
+      four-gate <strong>SimulationGatePolicy</strong> determines whether a
+      simulation-backed claim may carry a design decision.
+    </p>
+    <div style="text-align:center; margin: 1.5em 0; font-size:1.1em; line-height:1.8;">
+      <strong>Provenance</strong> &nbsp;→&nbsp;
+      <strong>Scope</strong> &nbsp;→&nbsp;
+      <strong>Reality</strong> &nbsp;→&nbsp;
+      <strong>Falsifiability</strong> &nbsp;→&nbsp;
+      <strong>Design-bearing</strong>
+    </div>
+    <ul class="contrib-list">
+      <li><strong>Can we reproduce it?</strong> — Complete chain from result artifact to source commit (N-PROV)</li>
+      <li><strong>Does the model represent what the claim is about?</strong> — Explicit scope as warrant boundary (N-SCOPE)</li>
+      <li><strong>Are the quantities carrying the claim independently grounded?</strong> — Truth-category-appropriate grounding (N-REALITY)</li>
+      <li><strong>Can the checks actually prove us wrong?</strong> — Invariants valid for the declared system boundary (N-INVARIANT)</li>
+    </ul>
+    <p>
+      All four gates must PASS for design-bearing. One BLOCK means
+      <em>informative only</em> — not that the simulation failed, but that
+      the warrant chain is incomplete.
+    </p>
+  </div>
+</section>
+
+<!-- ── Limits ───────────────────────────────────────────── -->
+<section id="limits">
+  <div class="wrap">
+    <h2>What This Tool Does — and Does Not Do</h2>
+    <p>
+      Superretometer evaluates <strong>documented dependencies and evidence
+      under explicit rules</strong>. It inspects the provenance graph you
+      register: what depends on what, which roots are independent, which
+      checks can fail, and which anti-patterns are present.
+    </p>
+    <ul class="contrib-list">
+      <li>It does <strong>not</strong> automatically confirm that the physical world matches the model.</li>
+      <li>It does <strong>not</strong> invent missing measurements or replace laboratory work.</li>
+      <li>Its conclusions depend on <strong>correct registration of dependencies</strong> — omit a calibration edge and the warrant analysis cannot see it.</li>
+      <li>Warrant is derived state from the current graph, not a permanent certificate of truth.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ── What ships vs ambitions ──────────────────────────── -->
+<section id="status">
+  <div class="wrap">
+    <h2>Implemented Today vs Ambitions</h2>
+    <p>
+      Package version: <strong>0.7.0</strong>
+      (<a href="https://github.com/euthm/superretometer/blob/main/pyproject.toml" target="_blank" rel="noopener">pyproject.toml</a>).
+      Latest published release notes:
+      <a href="releases/v0.6.4.md">v0.6.4</a>.
+    </p>
+    <h3 class="subhead">Implemented (reference implementation)</h3>
+    <ul class="contrib-list">
+      <li><strong>Structural epistemic warrant</strong> from provenance graph topology</li>
+      <li><strong>Independent provenance-root analysis</strong> — evidence count ≠ independent evidence</li>
+      <li><strong>Six structural anti-patterns</strong>: circular justification, tautological validation, calibrated-to-conclusion, inert parameters, physically unrealizable claims, unsupported domain transfers</li>
+      <li><strong>Supersession with transitive impact propagation</strong></li>
+      <li><strong>Threads of Reasoning</strong> with viewpoint traversal</li>
+      <li><strong>SimulationGatePolicy</strong> four-gate design warrant</li>
+      <li>CLI / MCP packaging; zero required runtime dependencies</li>
+    </ul>
+    <h3 class="subhead">Ambitions / research direction</h3>
+    <ul class="contrib-list">
+      <li>Broader multi-domain tooling and richer agent integrations</li>
+      <li>Longer-horizon learning loops over persistent engineering memory</li>
+      <li>Research relevance to non-decaying, testable world models — not claimed as shipped product features</li>
+    </ul>
+    <p>
+      Spec:
+      <a href="https://github.com/euthm/superretometer/tree/main/spec" target="_blank" rel="noopener"><code>spec/</code></a>
+      &nbsp;&middot;&nbsp;
+      Implementation:
+      <a href="https://github.com/euthm/superretometer/tree/main/cognitive_harness" target="_blank" rel="noopener"><code>cognitive_harness/</code></a>
+      &nbsp;&middot;&nbsp;
+      Examples:
+      <a href="https://github.com/euthm/superretometer/tree/main/examples" target="_blank" rel="noopener"><code>examples/</code></a>
+      &nbsp;&middot;&nbsp;
+      Tests:
+      <a href="https://github.com/euthm/superretometer/tree/main/tests" target="_blank" rel="noopener"><code>tests/</code></a>
+    </p>
+  </div>
+</section>
+
+<!-- ── Quick start ──────────────────────────────────────── -->
+<section id="quickstart">
+  <div class="wrap">
+    <h2>Quick Start</h2>
+    <div class="reasoning-chain">
+pip install cognitive-harness<br>
+superretometer --version<br>
+superretometer mcp
+    </div>
+    <p>
+      Naming note: the Python package is <code>cognitive-harness</code>
+      (import <code>cognitive_harness</code>). The project brand is
+      <strong>Superretometer</strong>; Cognitive Harness is the specification name.
+    </p>
+    <p>
+      Full quick start and API sketch:
+      <a href="https://github.com/euthm/superretometer/blob/main/README.md" target="_blank" rel="noopener">README on GitHub</a>.
+    </p>
+  </div>
+</section>
+
+<!-- ── Architecture (shorter) ───────────────────────────── -->
 <section>
   <div class="wrap">
-    <h2>Architecture</h2>
+    <h2>Architecture (overview)</h2>
     <p>
-      Superretometer harnesses four foundations into a single reasoning
-      and verification loop:
+      Superretometer combines generative reasoning with persistent structure
+      and an explicit reality check:
     </p>
     <div class="architecture-grid">
       <div class="arch-card">
         <h3>REASON</h3>
-        <p>LLM provides the generative reasoning capability — forming hypotheses, traversing domains, constructing candidate chains of justification.</p>
+        <p>LLM or engineer forms hypotheses and candidate justification chains.</p>
       </div>
       <div class="arch-card">
         <h3>CONTINUITY</h3>
-        <p><a href="#foundations-emergent">Emergent Memory</a> gives persistent storage across sessions: evidence, observations, decisions, and validated knowledge do not decay when the conversation ends.</p>
+        <p><a href="#foundations-emergent">Emergent Memory</a> keeps evidence, decisions, and observations across sessions.</p>
       </div>
       <div class="arch-card">
         <h3>STRUCTURE + TRACE</h3>
-        <p><a href="#foundations-muller">CAFCR and Lines of Reasoning</a> impose structure on the reasoning chain: each step records claim, viewpoint, and knowledge objects used. The thread becomes auditable and restartable.</p>
+        <p><a href="#foundations-muller">CAFCR / Lines of Reasoning</a> structure each step: claim, viewpoint, knowledge used.</p>
       </div>
       <div class="arch-card">
         <h3>REALITY CHECK</h3>
-        <p>Inspired by the <a href="#foundations-epr">EPR completeness criterion</a>: a conclusion is warranted only if the elements carrying it possess independently grounded counterparts. Not a quantum-mechanical claim — an epistemic one.</p>
+        <p>Inspired by the <a href="#foundations-epr">EPR completeness criterion</a> as an epistemic analogy — not a physics claim.</p>
       </div>
     </div>
     <div class="learning-loop">
@@ -107,68 +286,37 @@
   </div>
 </section>
 
-<!-- ── What It Does ─────────────────────────────────────── -->
-<section>
-  <div class="wrap">
-    <h2>What It Computes</h2>
-    <ul class="contrib-list">
-      <li><strong>Structural epistemic warrant</strong> — derived from provenance graph topology, not confidence scores or keyword matching</li>
-      <li><strong>Independent provenance-root analysis</strong> — evidence count &ne; independent evidence</li>
-      <li><strong>Six structural anti-patterns</strong>: circular justification, tautological validation, calibrated-to-conclusion, inert parameters, physically unrealizable claims, unsupported domain transfers</li>
-      <li><strong>Supersession with transitive impact propagation</strong> — when knowledge changes, downstream dependents are flagged</li>
-      <li><strong>Automated reassessment</strong> when upstream grounding is revoked or revised</li>
-      <li><strong>Threads of Reasoning</strong> with viewpoint traversal (conceptual &rarr; functional &rarr; realization &rarr; application)</li>
-    </ul>
-  </div>
-</section>
-
-<!-- ── From Result to Design Warrant (v0.6) ────────────────────────── -->
-<section>
-  <div class="wrap">
-    <h2>From Result to Design Warrant</h2>
-    <p>A simulation result is a file on disk. It is not a conclusion. The four-gate <strong>SimulationGatePolicy</strong> determines whether a simulation-backed claim may carry a design decision.</p>
-    <div style="text-align:center; margin: 1.5em 0; font-size:1.1em; line-height:1.8;">
-      <strong>Provenance</strong> &nbsp;→&nbsp;
-      <strong>Scope</strong> &nbsp;→&nbsp;
-      <strong>Reality</strong> &nbsp;→&nbsp;
-      <strong>Falsifiability</strong> &nbsp;→&nbsp;
-      <strong>Design-bearing</strong>
-    </div>
-    <ul class="contrib-list">
-      <li><strong>Can we reproduce it?</strong> — Complete chain from result artifact to source commit (N-PROV)</li>
-      <li><strong>Does the model represent what the claim is about?</strong> — Explicit scope as warrant boundary (N-SCOPE)</li>
-      <li><strong>Are the quantities carrying the claim independently grounded?</strong> — Truth-category-appropriate grounding (N-REALITY)</li>
-      <li><strong>Can the checks actually prove us wrong?</strong> — Invariants valid for the declared system boundary (N-INVARIANT)</li>
-    </ul>
-    <p>All four gates must PASS for design-bearing. One BLOCK means <em>informative only</em> — not that the simulation failed, but that the warrant chain is incomplete.</p>
-  </div>
-</section>
-
 <!-- ── Foundations / Lineage ────────────────────────────── -->
 <section id="foundations">
   <div class="wrap">
-    <h2>Foundations</h2>
+    <h2>Background &amp; Credits</h2>
     <p>
-      Superretometer is assembled from four complementary ingredients.
-      The work originated
-      through the contributions of
+      Longer academic background lives here and in linked notes. Lead with
+      use-value above; this section is attribution and lineage.
+      Detailed notes:
+      <a href="background.md">background.md</a>,
+      <a href="muller-cafcr.md">muller-cafcr.md</a>,
+      <a href="epr-completeness.md">epr-completeness.md</a>,
+      <a href="hoh-comparison.md">hoh-comparison.md</a>.
+    </p>
+    <p>
+      The work originated through the contributions of
       <a href="https://github.com/nikf2001" target="_blank" rel="noopener">Nikolai Fasting</a>
       and
       <a href="https://github.com/mkucharz" target="_blank" rel="noopener">Maciej Kucharz</a>
-      at Emergent Company, who built Emergent Memory and Emergent Strategy — the
-      persistent reasoning and adaptive planning substrate this harness runs on.
+      at Emergent Company, who built Emergent Memory and Emergent Strategy —
+      the persistent reasoning and adaptive planning substrate this harness
+      runs on.
     </p>
 
     <div class="lineage-grid">
 
-      <!-- Emergent Memory + Strategy -->
       <div class="lineage-card" id="foundations-emergent">
         <h3>Emergent Memory &amp; Emergent Strategy</h3>
         <p>
           <strong><a href="https://github.com/emergent-company/emergent.memory" target="_blank" rel="noopener">Emergent Memory</a></strong>
           provides the persistent graph backbone: knowledge, evidence,
-          decisions, and observations survive across sessions, failures,
-          and revisions. Without persistence, reasoning cannot accumulate.
+          decisions, and observations survive across sessions.
         </p>
         <p>
           <strong><a href="https://github.com/emergent-company/emergent.strategy" target="_blank" rel="noopener">Emergent Strategy</a></strong>
@@ -180,34 +328,28 @@
           <a href="https://github.com/mkucharz" target="_blank" rel="noopener">Maciej Kucharz</a>
           at Emergent Company. Emergent Strategy is grounded in Nikolai's
           experience building over 30 startups and inspired by
-          <em>Ready, Fire, Aim</em> (Robert Chapman, 2008): bias toward
+          <em>Ready, Fire, Aim</em> (Michael Masterson, 2008): bias toward
           action, learn from outcome, iterate.
-        </p>
-        <p>
-          Together they form the cognitive base: reasoning with continuity
-          and adaptive learning.
         </p>
       </div>
 
-      <!-- Gerrit Muller / CAFCR -->
       <div class="lineage-card" id="foundations-muller">
         <h3>Gerrit Müller — CAFCR &amp; Lines of Reasoning</h3>
         <p>
-          Müller's <em>CAFCR: A Cognitive Approach for Flexibly Coordinating
-          Reasoning</em> (PhD thesis, University of Twente, 2004) introduced
-          <strong>Lines of Reasoning</strong> — a structured method for tracing
-          decisions from the user's need, through viewpoints, to a bill of
-          materials (realization). Viewpoint-based traversal connects each
-          layer so the reasoning chain can be audited and restarted at any step.
+          CAFCR expands to
+          <strong>Customer Objectives, Application, Functional, Conceptual,
+          Realization</strong>.
+          Müller's PhD thesis,
+          <em>CAFCR: A Multi-view Method for Embedded Systems Architecting;
+          Balancing Genericity and Specificity</em>
+          (TU Delft, 2004), introduced structured multi-view architecting and
+          <strong>Lines / Threads of Reasoning</strong> — tracing decisions
+          from stakeholder need through viewpoints to realization so the
+          reasoning chain can be audited and restarted.
         </p>
         <p>
-          Superretometer's Thread model computationally applies the principle
-          of CAFCR Lines of Reasoning. Each thread records claims, viewpoints, and the
-          knowledge objects used — making reasoning auditable and restartable.
-        </p>
-        <p>
-          Müller's later work on CEMA/CESA and viewpoint hopping further
-          informed the structure of explicit engineering reasoning threads.
+          Superretometer's Thread model computationally applies that principle:
+          each thread records claims, viewpoints, and knowledge objects used.
         </p>
         <p class="ref">
           <a href="https://www.gaudisite.nl/ArchitecturalReasoning.html" target="_blank" rel="noopener">Architectural Reasoning; CAFCR</a>
@@ -218,7 +360,6 @@
         </p>
       </div>
 
-      <!-- EPR -->
       <div class="lineage-card" id="foundations-epr">
         <h3>Einstein, Podolsky &amp; Rosen — 1935</h3>
         <p>
@@ -228,13 +369,13 @@
           must account for every element of physical reality.
         </p>
         <p>
-          Superretometer adapts this as an <strong>epistemic criterion
-          for engineering reasoning</strong>: a conclusion is warranted
-          only if the quantities and claims carrying it possess
-          independently grounded counterparts outside the model.
+          Superretometer adapts this as an <strong>epistemic analogy for
+          engineering reasoning</strong>: a conclusion is warranted only if
+          the quantities and claims carrying it possess independently
+          grounded counterparts outside the model.
         </p>
         <p>
-          This is our analogy, not a claim about quantum mechanics.
+          This is an analogy, not a claim about quantum mechanics.
           We do not apply quantum physics to engineering problems.
           We apply the structural question EPR asked about the
           relationship between description and reality.
@@ -244,18 +385,19 @@
         </p>
       </div>
 
-      <!-- Harness-of-Harness -->
       <div class="lineage-card" id="foundations-hoh">
         <h3>Harness-of-Harness</h3>
         <p>
-          The Harness-of-Harness framework (Yan et al., 2026) provides
-          supporting evidence that structuring a harness around an LLM
-          matters — for state preservation, progressive disclosure, and
-          long-running orchestration.
+          The Harness-of-Harness framework (Yan et al., 2026) is
+          <strong>supporting literature</strong> on structuring a harness
+          around an LLM — for state preservation, progressive disclosure,
+          and long-running orchestration.
         </p>
         <p>
-          It is not the conceptual origin of Superretometer. It
-          validates the architectural direction.
+          It is not the conceptual origin of Superretometer, and it does
+          not validate Superretometer's warrant mechanisms or architectural
+          claims. Related reading, not empirical confirmation of this
+          project.
         </p>
         <p class="ref">
           <a href="https://www.alphaxiv.org/abs/2609.01481" target="_blank" rel="noopener">alphaxiv.org/abs/2609.01481</a>
@@ -272,47 +414,14 @@
   </div>
 </section>
 
-<!-- ── Research Implications ────────────────────────────── -->
-<section>
-  <div class="wrap">
-    <h2>Research Implications</h2>
-    <p>
-      These mechanisms — persistent structured reasoning, explicit provenance
-      tracing, and independent grounding verification — may also be relevant
-      to the broader question of how AI systems can maintain testable,
-      non-decaying models of the physical world.
-    </p>
-  </div>
-</section>
-
-<!-- ── Get Started ──────────────────────────────────────── -->
-<section>
-  <div class="wrap">
-    <h2>Get Started</h2>
-    <p>
-      The Cognitive Harness specification and the Superretometer reference
-      implementation are on GitHub.
-    </p>
-    <p>
-      <a href="https://github.com/euthm/superretometer" target="_blank" rel="noopener">
-        github.com/euthm/superretometer
-      </a>
-    </p>
-    <p style="margin-top: 1rem; font-size: 0.92rem; color: var(--muted);">
-      Specification: <code>spec/</code> &nbsp;&middot;&nbsp;
-      Reference implementation: <code>cognitive_harness/</code> &nbsp;&middot;&nbsp;
-      Examples: <code>examples/</code> &nbsp;&middot;&nbsp;
-      Tests: <code>tests/</code>
-    </p>
-  </div>
-</section>
-
 <!-- ── Footer ───────────────────────────────────────────── -->
 <footer>
   <div class="wrap">
     <p>
       Apache-2.0 &nbsp;&middot;&nbsp;
       <a href="https://github.com/euthm/superretometer">GitHub</a>
+      &nbsp;&middot;&nbsp;
+      <a href="https://www.superretometer.com">superretometer.com</a>
     </p>
   </div>
 </footer>
