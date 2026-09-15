@@ -102,8 +102,12 @@ class WarrantAnalyzer:
                 result.conditional_assumptions.append(f"{ko_id}: {ko.title}")
                 dependent.append(ko_id)
             elif ko.truth_category == TruthCategory.DOCUMENTED_DECISION:
-                # Decisions are grounded AS decisions but do not prove physical reality
-                independent.append(ko_id)
+                # A decision is grounded AS a decision but does not prove physical
+                # reality, so it conditions a conclusion rather than grounding it.
+                # Counting it as independent let a claim rest on a meeting note.
+                result.conditional_assumptions.append(
+                    f"{ko_id}: {ko.title} (documented decision, not independent evidence)")
+                dependent.append(ko_id)
             else:
                 dependent.append(ko_id)
 
@@ -133,6 +137,7 @@ class WarrantAnalyzer:
         # SUPPORTS is INBOUND: evidence -> SUPPORTS -> conclusion
         # So we look for incoming SUPPORTS edges to the conclusion
         shared_root_weakness = False
+        shared_roots: set[str] = set()
         supports_premises: list[str] = []
         if indep:
             incoming_supports = self.storage.get_incoming_relations(
@@ -143,13 +148,23 @@ class WarrantAnalyzer:
                 if from_id in path and from_id != conclusion_ko_id
             ]
             if len(supports_premises) >= 2:
-                premise_roots = [indep.root_sets.get(p, set()) for p in supports_premises]
-                non_empty_roots = [r for r in premise_roots if r]
-                if len(non_empty_roots) >= 2:
-                    # Check if all share the same root set
-                    first_roots = non_empty_roots[0]
-                    if all(r == first_roots for r in non_empty_roots[1:]):
-                        shared_root_weakness = True
+                # Premises that share ANY provenance root are not fully
+                # independent of one another. Requiring their root sets to be
+                # identical made partial overlap invisible: two premises with
+                # roots {R1,R2} and {R1,R3} both rest on R1, yet compared
+                # unequal and read as independent evidence. It also meant
+                # adding one unrelated upstream node to a single premise could
+                # clear a genuine shared-root finding.
+                for i in range(len(supports_premises)):
+                    roots_i = indep.root_sets.get(supports_premises[i], set())
+                    if not roots_i:
+                        continue
+                    for j in range(i + 1, len(supports_premises)):
+                        roots_j = indep.root_sets.get(supports_premises[j], set())
+                        overlap = roots_i & roots_j
+                        if overlap:
+                            shared_root_weakness = True
+                            shared_roots |= overlap
 
         # 6. Determine warrant status
         has_structural_defect = any(
@@ -173,8 +188,11 @@ class WarrantAnalyzer:
                     result.conditional_assumptions.append(
                         f"Missing premise: {mid} (not found in storage)")
         elif dependent and not has_structural_defect:
+            # Categories that condition a conclusion rather than ground it:
+            # accepting them yields the conclusion, so warrant is conditional.
+            conditioning = (TruthCategory.ASSUMPTION, TruthCategory.DOCUMENTED_DECISION)
             all_assumptions = all(
-                (self.storage.get_ko(kid) or KnowledgeObject()).truth_category == TruthCategory.ASSUMPTION
+                (self.storage.get_ko(kid) or KnowledgeObject()).truth_category in conditioning
                 for kid in dependent
                 if self.storage.get_ko(kid)
             )
@@ -187,13 +205,25 @@ class WarrantAnalyzer:
                 result.warrant_status = WarrantStatus.UNWARRANTED
         elif shared_root_weakness:
             result.warrant_status = WarrantStatus.CONDITIONALLY_WARRANTED
-            for r in (indep.root_sets.get(supports_premises[0], set()) if supports_premises else set()):
+            for r in sorted(shared_roots):
                 result.conditional_assumptions.append(
-                    f"All SUPPORTS premises share provenance root: {r}")
+                    f"SUPPORTS premises share provenance root: {r}")
         elif not dependent:
             result.warrant_status = WarrantStatus.WARRANTED
         else:
             result.warrant_status = WarrantStatus.UNWARRANTED
+
+        # Every classification must be explainable. An UNWARRANTED verdict with
+        # neither a diagnosis nor a named ungrounded premise is an unexplained
+        # refusal, and downstream gates render it as "defects: []".
+        if (result.warrant_status == WarrantStatus.UNWARRANTED
+                and not result.anti_pattern_diagnoses
+                and not result.conditional_assumptions):
+            for kid in dependent:
+                dko = self.storage.get_ko(kid)
+                label = f"{kid}: {dko.title}" if dko else kid
+                result.conditional_assumptions.append(
+                    f"No independent grounding established for {label}")
 
         return result
 
@@ -258,62 +288,44 @@ class WarrantAnalyzer:
           edges to find prerequisites and sources
         
         Returns (path, cycles_found). Detects direct and indirect cycles.
+
+        Reachability and cycle detection are separate passes. A breadth-first
+        sweep cannot maintain a DFS recursion stack, so cycles are reported by
+        `_find_cycles_in_path` over the collected node set.
         """
         visited: set[str] = set()
-        in_stack: set[str] = set()
         path: list[str] = []
-        cycles: list[list[str]] = []
-        parent: dict[str, str | None] = {}
         queue = [ko_id]
 
         while queue:
             current = queue.pop(0)
-            if current in in_stack:
-                # Found a cycle — trace it
-                cycle = [current]
-                p = parent.get(current)
-                while p and p != current:
-                    cycle.append(p)
-                    p = parent.get(p)
-                if p == current:
-                    cycle.append(current)
-                    cycle.reverse()
-                    cycles.append(cycle)
-                continue
             if current in visited:
                 continue
             visited.add(current)
-            in_stack.add(current)
             path.append(current)
 
             ko = self.storage.get_ko(current)
             if ko is None:
-                in_stack.discard(current)
                 continue
 
             # OUTBOUND: follow dependencies and derivations (ko -> prereq/source)
             for rel in ko.relations:
                 if rel.type in JUSTIFICATION_OUTBOUND and rel.to not in visited:
-                    parent[rel.to] = current
                     queue.append(rel.to)
 
             # INBOUND: follow supporting evidence (evidence -> ko)
             incoming = self.storage.get_incoming_relations(current, JUSTIFICATION_INBOUND)
             for from_id, rel_type in incoming:
                 if from_id not in visited:
-                    parent[from_id] = current
                     queue.append(from_id)
 
             # Follow derivation upstream (structured provenance)
             if ko.derivation:
                 for up_id in ko.derivation.upstream_ko_ids:
                     if up_id not in visited:
-                        parent[up_id] = current
                         queue.append(up_id)
 
-            in_stack.discard(current)
-
-        return path, cycles
+        return path, self._find_cycles_in_path(path)
 
     # ── Structural anti-pattern detection ───────────────────────────────
 
@@ -412,6 +424,28 @@ class WarrantAnalyzer:
         # Check if training and test datasets share provenance roots
         train_roots = self._trace_dataset_roots(train_ds)
         test_roots = self._trace_dataset_roots(test_ds)
+
+        # Untraceable lineage is not a clean split. Two datasets with no
+        # source_ko_id have an empty intersection, which the overlap test
+        # below cannot distinguish from genuine disjointness — so an absent
+        # lineage would silently read as independent evidence.
+        if not train_roots or not test_roots:
+            missing = [
+                name for name, roots in (("training", train_roots), ("test", test_roots))
+                if not roots
+            ]
+            return AntiPatternDiagnosis(
+                pattern=AntiPattern.CALIBRATED_TO_CONCLUSION,
+                offending_ko_ids=[ko.id],
+                violated_condition=(
+                    f"Dataset lineage is untraceable for: {', '.join(missing)}. "
+                    f"Independence of the train/test split cannot be established."
+                ),
+                resolution_hint=(
+                    "Give each dataset a source_ko_id (or derived_from_dataset_ids) "
+                    "so its provenance roots can be compared."
+                ),
+            )
 
         shared = train_roots & test_roots
         if shared:
@@ -620,7 +654,18 @@ class WarrantAnalyzer:
     def _check_self_referential_evidence(
         self, ko: KnowledgeObject,
     ) -> AntiPatternDiagnosis | None:
-        """Check if any evidence for this KO has claim_id == ko.id (self-referential)."""
+        """Check if any evidence for this KO has claim_id == ko.id (self-referential).
+
+        NOTE (unresolved, see CH-EVIDENCE-SEMANTICS): this condition and
+        `StorageInterface.add_evidence` encode contradictory conventions.
+        `add_evidence(ev_id, claim_id, ...)` appends ev_id to claim_id's
+        `evidence_ids`, so every normally attached record satisfies
+        `claim_id == ko.id` and is reported here as CIRCULAR_DEPENDENCY.
+        The condition is left as-is because changing it would invert the
+        documented behaviour in tests/adversarial/test_v05.py::test_circular;
+        resolving it is a spec decision, not a local fix. This is also why the
+        check must not be wired into `compute_warrant`.
+        """
         for ev_id in ko.evidence_ids:
             ev = self.storage.get_evidence(ev_id)
             if ev and ev.get("claim_id") == ko.id:
@@ -674,23 +719,34 @@ class WarrantAnalyzer:
         cycles: list[list[str]] = []
         stack_path: list[str] = []
 
-        def dfs(node: str):
-            color[node] = GRAY
-            stack_path.append(node)
-            for nb in adj.get(node, []):
-                if color.get(nb) == GRAY:
-                    # Found cycle
-                    ci = stack_path.index(nb)
-                    cycle = stack_path[ci:] + [nb]
-                    cycles.append(cycle)
-                elif color.get(nb) == WHITE:
-                    dfs(nb)
-            stack_path.pop()
-            color[node] = BLACK
+        # Iterative DFS. Graph depth is an input, so recursion depth must not
+        # be: a deep-but-acyclic justification chain is a valid graph and must
+        # not raise RecursionError instead of returning a warrant.
+        for start in path:
+            if color.get(start) != WHITE:
+                continue
+            # Each frame is (node, index of next neighbour to visit).
+            stack: list[list] = [[start, 0]]
+            color[start] = GRAY
+            stack_path.append(start)
 
-        for nid in path:
-            if color.get(nid) == WHITE:
-                dfs(nid)
+            while stack:
+                node, idx = stack[-1]
+                neighbours = adj.get(node, [])
+                if idx >= len(neighbours):
+                    stack.pop()
+                    stack_path.pop()
+                    color[node] = BLACK
+                    continue
+                stack[-1][1] += 1
+                nb = neighbours[idx]
+                if color.get(nb) == GRAY:
+                    ci = stack_path.index(nb)
+                    cycles.append(stack_path[ci:] + [nb])
+                elif color.get(nb) == WHITE:
+                    color[nb] = GRAY
+                    stack_path.append(nb)
+                    stack.append([nb, 0])
 
         return cycles
 
@@ -860,14 +916,20 @@ class WarrantAnalyzer:
             upstream = ko.derivation.upstream_ko_ids
             if len(upstream) < 2:
                 return False
-            # Check that upstream quantities have different roots
-            root_sets = []
-            for up_id in upstream:
-                roots = self._trace_provenance_roots(up_id)
-                root_sets.append(roots)
-            # At least two must have different roots
-            if len(root_sets) >= 2:
-                return root_sets[0] != root_sets[1]
+            # A validation is grounded only if at least one pair of the
+            # compared quantities is genuinely independent, which means
+            # disjoint provenance roots — the same criterion the FITTED branch
+            # above applies to a train/test split. Inequality of the first two
+            # root sets was weaker in two ways: it accepted sets that merely
+            # differed while overlapping ({R} vs {R,S} compared unequal and
+            # passed), and it ignored every upstream quantity after the second.
+            root_sets = [self._trace_provenance_roots(up_id) for up_id in upstream]
+            for i in range(len(root_sets)):
+                if not root_sets[i]:
+                    continue
+                for j in range(i + 1, len(root_sets)):
+                    if root_sets[j] and not (root_sets[i] & root_sets[j]):
+                        return True
             return False
 
         # Model-derived: must have upstream derivation

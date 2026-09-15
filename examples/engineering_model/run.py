@@ -318,3 +318,9 @@ if result.warrant_status.value == "unwarranted":
     print("✓ Conclusion correctly UNWARRANTED — structural defects detected.")
 else:
     print(f"✗ Expected UNWARRANTED, got {result.warrant_status.value}")
+
+# Stated as a check, not prose, so the CI example step can fail on regression.
+assert result.warrant_status.value == "unwarranted", result.warrant_status.value
+detected = {f.pattern.value for f in findings}
+assert {"calibrated_to_conclusion", "tautological_validation",
+        "unsupported_transfer"} <= detected, detected
