@@ -81,3 +81,9 @@ else:
     print(f"\n✗ Conclusion is {result.warrant_status.value}.")
     for d in result.anti_pattern_diagnoses:
         print(f"  Anti-pattern: {d.pattern.value}")
+
+# CI runs the examples. Without an assertion that step passes on any output,
+# so the expected outcome is stated as a check rather than as prose.
+assert result.warrant_status.value == "warranted", result.warrant_status.value
+assert set(result.independent_kos) == {"ev-steel-strength", "ev-thermal-conductivity"}
+assert result.anti_pattern_diagnoses == []
