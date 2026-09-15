@@ -16,3 +16,7 @@ warnings.warn(
 from cognitive_harness.mcp.server import MCPServer, main, TOOLS  # noqa: F401
 
 __all__ = ["MCPServer", "main", "TOOLS"]
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()
