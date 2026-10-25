@@ -2,6 +2,15 @@
 
 All notable changes to cognitive-harness (Superretometer).
 
+## [Unreleased]
+
+### Documentation
+- Record StrategyServer as the maintainer's current external strategy workflow,
+  replacing the previous local EPF workflow.
+- Clarify the boundary between external strategy/planning, Superretometer evidence
+  evaluation, and job execution; retain historical `epf_ready_id` compatibility.
+- Update website and agent instructions without adding a runtime integration.
+
 ## [0.7.0] — 2026-09-06 (Candidate)
 
 ### Added

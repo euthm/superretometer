@@ -265,6 +265,23 @@ Available tools: `orientation`, `check_warrant`, `justification_path`,
 `scan_anti_patterns`, `open_tensions`, `review_required`, `impact_set`,
 `propose_ko`, `propose_relation`, `propose_evidence`, `propose_tension`.
 
+## External strategy workflow: StrategyServer
+
+As of 25 October 2026, the maintainer's local strategy workflow uses
+**StrategyServer**, replacing the previous local EPF workflow. StrategyServer
+holds strategy context, priorities, and planning decisions. Superretometer
+evaluates the claims and evidence used to justify an implementation decision.
+
+This is an external workflow arrangement. The public reference implementation
+remains standalone, with `InMemoryStorage` and no required StrategyServer or
+Emergent Memory connection. A StrategyServer adapter is not included in this
+repository. Gate evaluation does not itself dispatch jobs or grant permission
+to merge or deploy.
+
+See [StrategyServer workflow and compatibility](docs/strategyserver.md), including
+how to retain historical `epf_ready_id` provenance without treating it as a
+current integration requirement.
+
 ## Specification documents
 
 - [`spec/IDENTITY.md`](spec/IDENTITY.md) — logical identity contract
