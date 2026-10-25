@@ -15,7 +15,9 @@ Normative rule (N-IMPL-PROV):
   dependency state is intact.
 """
 from __future__ import annotations
+import hashlib
 import logging
+import os
 import re
 from typing import Optional, Tuple
 from cognitive_harness.model.ko import (
@@ -185,6 +187,7 @@ class ImplementationGatePolicy:
                 test=_gate("test", GateStatus.BLOCK, "Claim KO not found."),
                 falsifiability=_gate("falsifiability", GateStatus.BLOCK, "Claim KO not found."),
                 dependency=_gate("dependency", GateStatus.BLOCK, "Claim KO not found."),
+                freshness=_gate("freshness", GateStatus.BLOCK, "Claim KO not found."),
             )
 
         impl_prov = self._get_implementation_provenance(ko)
@@ -195,12 +198,13 @@ class ImplementationGatePolicy:
         test = self._gate_test(ko, impl_prov)
         falsifiability = self._gate_falsifiability(ko, impl_prov)
         dependency = self._gate_dependency(ko, impl_prov)
+        freshness = self._gate_freshness(ko, impl_prov)
 
         result = _report(claim_ko_id, provenance, scope, worktree, test,
-                         falsifiability, dependency)
+                         falsifiability, dependency, freshness)
         result["design_bearing"] = all(
             r["status"] == "pass" for r in [provenance, scope, worktree, test,
-                                            falsifiability, dependency]
+                                            falsifiability, dependency, freshness]
         )
         return result
 
@@ -561,6 +565,44 @@ class ImplementationGatePolicy:
                       for n in claim_names],
         )
 
+    # ── Gate 7: Code Freshness ──────────────────────────────────────────
+    # N-IMPL-FRESHNESS: path-scoped git blob digest must match to detect code drift.
+
+    def _gate_freshness(
+        self, ko: KnowledgeObject, prov: ImplementationProvenance | None,
+    ) -> dict:
+        if prov is None:
+            return _gate("freshness", GateStatus.BLOCK, "No provenance.")
+
+        if not prov.blob_digest or not prov.blob_paths:
+            return _gate(
+                "freshness", GateStatus.UNKNOWN,
+                "No blob_digest or blob_paths recorded. "
+                "Cannot verify code freshness against commit.",
+            )
+
+        try:
+            computed = _compute_blob_digest(prov.repo_path, prov.blob_paths)
+        except Exception as exc:
+            return _gate(
+                "freshness", GateStatus.UNKNOWN,
+                f"Could not compute blob digest: {exc}.",
+            )
+
+        if computed != prov.blob_digest:
+            return _gate(
+                "freshness", GateStatus.BLOCK,
+                f"Code drift detected: stored digest {prov.blob_digest[:12]}… "
+                f"does not match computed {computed[:12]}… "
+                f"for paths {prov.blob_paths}.",
+            )
+
+        return _gate(
+            "freshness", GateStatus.PASS,
+            f"Code freshness verified for {len(prov.blob_paths)} path(s).",
+            evidence=[f"{p}: included" for p in prov.blob_paths],
+        )
+
     # ── Helpers ────────────────────────────────────────────────────────
 
     @staticmethod
@@ -645,6 +687,8 @@ class ImplementationGatePolicy:
                 tested_commit=d.get("tested_commit", ""),
                 tested_worktree_diff_sha256=d.get("tested_worktree_diff_sha256", ""),
                 test_timestamp=d.get("test_timestamp", ""),
+                blob_digest=d.get("blob_digest", ""),
+                blob_paths=d.get("blob_paths", []),
                 session_id=d.get("session_id", ""),
                 epf_ready_id=d.get("epf_ready_id", ""),
             )
@@ -745,8 +789,13 @@ def _gate(name: str, status: GateStatus, reason: str, evidence: list[str] | None
 
 def _report(claim_ko_id: str, provenance: dict, scope: dict,
            worktree: dict, test: dict,
-           falsifiability: dict, dependency: dict) -> dict:
-    return {
+           falsifiability: dict, dependency: dict,
+           freshness: dict | None = None) -> dict:
+    gates = [provenance, scope, worktree, test,
+             falsifiability, dependency]
+    if freshness:
+        gates.append(freshness)
+    result = {
         "claim_ko_id": claim_ko_id,
         "provenance": provenance,
         "scope": scope,
@@ -754,10 +803,11 @@ def _report(claim_ko_id: str, provenance: dict, scope: dict,
         "test": test,
         "falsifiability": falsifiability,
         "dependency": dependency,
-        "design_bearing": all(r["status"] == "pass" for r in
-                              [provenance, scope, worktree, test,
-                               falsifiability, dependency]),
+        "design_bearing": all(r["status"] == "pass" for r in gates),
     }
+    if freshness:
+        result["freshness"] = freshness
+    return result
 
 
 def _is_valid_iso8601(ts: str, require_tz: bool = True) -> bool:
@@ -790,3 +840,16 @@ def _is_complete_portable_timestamp(ts: str) -> bool:
 def _is_any_timestamp(ts: str) -> bool:
     """Any ISO 8601 timestamp, including naive."""
     return _is_valid_iso8601(ts, require_tz=False)
+
+
+def _compute_blob_digest(repo_path: str, paths: list[str]) -> str:
+    """Compute SHA-256 over file contents for the given paths relative to repo_path."""
+    if not os.path.isdir(repo_path):
+        raise FileNotFoundError(f"Repo path does not exist: {repo_path}")
+    h = hashlib.sha256()
+    for p in sorted(paths):
+        full = os.path.join(repo_path, p)
+        if os.path.isfile(full):
+            with open(full, "rb") as f:
+                h.update(f.read())
+    return h.hexdigest()

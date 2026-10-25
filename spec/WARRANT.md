@@ -96,10 +96,10 @@ Immutable snapshot: baseline_id, version, model_id, source_commit, parameter_set
 
 ImplementationGatePolicy is a cross-cutting warrant dimension for implementation-bearing claims. It operates alongside SimulationGatePolicy and covers code, configuration, and deployment claims.
 
-### The Six Gates
+### The Seven Gates
 
 ```
-PROVENANCE  →  SCOPE  →  WORKTREE  →  TEST  →  FALSIFIABILITY  →  DEPENDENCY  →  DESIGN-BEARING
+PROVENANCE  →  SCOPE  →  WORKTREE  →  TEST  →  FALSIFIABILITY  →  DEPENDENCY  →  FRESHNESS  →  DESIGN-BEARING
 ```
 
 Each gate evaluates independently. Status: PASS, BLOCK, or UNKNOWN.
@@ -174,11 +174,13 @@ When worktree is dirty: `claim.worktree_diff_sha256 == tested_worktree_diff_sha2
 
 **Gate 6 — Dependency (N-IMPL-DEPENDENCY):** Submodule/dependency state must be consistent between claim and tested state. Each submodule pin carries `repo_remote_sanitized`, `repo_remote_canonical`, and `commit`. The claim's `submodule_pins` must match `tested_submodule_pins` in set, canonical remote, and commit. Mismatch → BLOCK. Missing tested evidence → UNKNOWN. No submodules → PASS.
 
+**Gate 7 — Freshness (N-IMPL-FRESHNESS):** Path-scoped git blob digest must match to detect code drift. The claim stores a `blob_digest` (SHA-256 of file contents) for a set of `blob_paths` relative to `repo_path`. The gate recomputes the digest from the current working tree and compares. Mismatch → BLOCK. Missing digest → UNKNOWN. Match → PASS.
+
 ### Design-Bearing Semantics
 
 | Condition | Verdict |
 |-----------|---------|
-| All six gates PASS | **Design-bearing allowed** |
+| All seven gates PASS | **Design-bearing allowed** |
 | At least one gate BLOCK | **Informative only** |
 | Any gate UNKNOWN | **Insufficiently established** |
 
@@ -195,3 +197,23 @@ Comparison uses canonical identity only. `git@github.com:owner/repo.git` and `ht
 ### UNGROUNDED Claims
 
 A claim that declares `what_would_falsify` validators but has no passing validator attached is displayed as **UNGROUNDED** in AIM reports. This is distinct from BLOCK — it means the claim is unfalsified, not necessarily false.
+
+### Implementation Gate Scope (N-IMPL-SELFCONSISTENCY)
+
+> Implementation gates verify self-consistency, not external truth.
+
+The six gates compare a claim's declared provenance against its own declared scope, test evidence, and dependency pins. They cannot detect fabricated claims — a wholly invented commit hash, test run, and remote will pass all gates if internally consistent. The gates establish that the claim is *well-formed* and *self-consistent*, not that the underlying code exists or the tests are genuine. Trust in the claim rests on the agent or human that authored it.
+
+### Storage Contract (N-STORAGE-MUTABILITY)
+
+> ``InMemoryStorage`` returns references to stored objects, not copies.
+
+Callers receiving a ``KnowledgeObject`` from ``get_ko()`` hold a mutable handle. Direct mutation bypasses the proposal and validation pipeline. This is intentional: the in-memory backend is a testing and development tool. Production backends enforce immutability through their API contract.
+
+### Provenance Source and Independence (N-PROV-SOURCE)
+
+> Provenance roots are canonicalised to ``provenance.source``, not KO identity.
+
+Two leaf KOs with the same ``provenance.source`` share a provenance root. The ``source`` field becomes semantically load-bearing: fixture sources must be specific enough to distinguish genuinely independent measurements.
+
+``Provenance.independent`` defaults to ``None`` (unspecified). A KO with ``independent=None`` or ``independent=False`` cannot establish independent grounding. ``KnowledgeObject.__post_init__`` no longer fabricates provenance — unprovenanced KOs remain ``UNRESOLVED``.

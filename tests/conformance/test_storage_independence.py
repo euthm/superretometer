@@ -129,7 +129,7 @@ class NoKosStorage(StorageInterface):
         chain.reverse()
         return chain
 
-    def add_evidence(self, evidence_id: str, claim_id: str, status: str, observation: str, records: list[dict]) -> str:
+    def add_evidence(self, evidence_id: str, claim_id: str, status: str, observation: str, records: list[dict], source_ko_id: str | None = None) -> str:
         ev = {"id": evidence_id, "claim_id": claim_id, "status": status,
               "observation": observation, "records": records}
         self._evidence[evidence_id] = ev
