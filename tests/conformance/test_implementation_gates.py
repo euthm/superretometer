@@ -149,7 +149,8 @@ def test_remote_match_pass(storage):
     assert result["test"]["status"] == "pass"
     assert result["falsifiability"]["status"] == "pass"
     assert result["dependency"]["status"] == "pass"
-    assert result["design_bearing"]
+    assert result["freshness"]["status"] == "unknown"
+    assert not result["design_bearing"]
 
 
 # ================================================================
@@ -505,11 +506,11 @@ def _mk_validator(ko_id):
 def _mk_complete_prov(remote, commit, validator_id="validator-1",
                        worktree_clean=True, worktree_diff="",
                        tested_commit=None, tested_diff="",
-                       exit_code=0):
+                       exit_code=0, include_blob_digest=False):
     """Build a complete implementation provenance dict."""
     if tested_commit is None:
         tested_commit = commit
-    return {
+    prov = {
         "repo_remote_canonical": remote,
         "commit": commit,
         "worktree_clean": worktree_clean,
@@ -523,6 +524,12 @@ def _mk_complete_prov(remote, commit, validator_id="validator-1",
         "tested_worktree_diff_sha256": tested_diff,
         "test_timestamp": "2026-01-01T00:00:00Z",
     }
+    if include_blob_digest:
+        import hashlib
+        prov["blob_digest"] = hashlib.sha256(b"test-files").hexdigest()
+        prov["blob_paths"] = ["cognitive_harness/__init__.py"]
+        prov["repo_path"] = str(Path(__file__).resolve().parents[2])
+    return prov
 
 
 def test_ch_impl_007_complete_chain_pass(storage):
@@ -545,7 +552,8 @@ def test_ch_impl_007_complete_chain_pass(storage):
     assert result["worktree"]["status"] == "pass"
     assert result["test"]["status"] == "pass"
     assert result["falsifiability"]["status"] == "pass"
-    assert result["design_bearing"]
+    assert result["freshness"]["status"] == "unknown"
+    assert not result["design_bearing"]
 
 
 # ================================================================
@@ -718,7 +726,8 @@ def test_ch_impl_016_complete_success(storage):
     assert result["scope"]["status"] == "pass"
     assert result["worktree"]["status"] == "pass"
     assert result["test"]["status"] == "pass"
-    assert result["design_bearing"]
+    assert result["freshness"]["status"] == "unknown"
+    assert not result["design_bearing"]
 
 
 # ================================================================
@@ -772,7 +781,8 @@ def test_ch_impl_017_falsifier_present(storage):
     storage.create_ko(_mk_validator("validator-1"))
     result = policy.evaluate_gates("claim-017")
     assert result["falsifiability"]["status"] == "pass"
-    assert result["design_bearing"]
+    assert result["freshness"]["status"] == "unknown"
+    assert not result["design_bearing"]
 
 
 # ================================================================

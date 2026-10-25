@@ -120,7 +120,7 @@ class WarrantAnalyzer:
             conc = self.storage.get_ko(conclusion_ko_id)
             if conc is not None:
                 self_grounding_ok = True
-                if conc.provenance is None or not conc.provenance.independent:
+                if conc.provenance is None or conc.provenance.independent is not True:
                     self_grounding_ok = False
                 # Physical observations and sourced data require evidence to be self-grounded
                 if conc.truth_category in (
@@ -267,10 +267,10 @@ class WarrantAnalyzer:
             if d:
                 all_diagnoses.append(d)
 
-            # Check circular dependency (self-referential evidence)
-            d = self._check_self_referential_evidence(ko)
-            if d:
-                all_diagnoses.append(d)
+            # NOTE: _check_self_referential_evidence is NOT called here.
+            # add_evidence writes claim_id == ko.id for every normally attached
+            # piece of evidence, so the check would flag all KOs carrying
+            # evidence as CIRCULAR_DEPENDENCY. See Issue #12 item 3.
 
         return all_diagnoses
 
@@ -797,7 +797,12 @@ class WarrantAnalyzer:
 
     def _trace_provenance_roots(self, ko_id: str) -> set[str]:
         """Trace a KO back to its ultimate provenance roots.
-        Roots are KOs with no further upstream derivation (leaf nodes).
+
+        Roots are leaf KOs with no further upstream derivation. A leaf
+        root is canonicalised to its declared ``provenance.source`` so
+        that two premises transcribed from the same document collapse to
+        a single root.  If a leaf has no provenance (or an empty source),
+        its KO id is used as a fallback.
         """
         visited: set[str] = set()
         roots: set[str] = set()
@@ -845,7 +850,10 @@ class WarrantAnalyzer:
                         queue.append(rel.to)
 
             if not has_upstream:
-                roots.add(current)
+                if ko.provenance and ko.provenance.source:
+                    roots.add(ko.provenance.source)
+                else:
+                    roots.add(current)
 
         return roots
 
@@ -877,8 +885,11 @@ class WarrantAnalyzer:
     ) -> bool:
         """Check if a KO has independent structural grounding.
         Does NOT use truth category alone — uses graph structure.
+
+        ``independent=None`` (unspecified) is treated as unresolved: the
+        KO cannot ground a conclusion until independence is asserted.
         """
-        if ko.provenance is None or not ko.provenance.independent:
+        if ko.provenance is None or ko.provenance.independent is not True:
             return False
 
         # Conservation laws and mathematical identities are always grounded
