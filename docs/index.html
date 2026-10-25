@@ -15,6 +15,7 @@
   <div class="wrap">
     <a href="#worked-example">Worked example</a>
     <a href="#quickstart">Quick start</a>
+    <a href="#strategyserver">StrategyServer</a>
     <a href="#limits">Limits</a>
     <a href="#gates">Decision gates</a>
     <a href="#status">What ships</a>
@@ -244,6 +245,26 @@ superretometer mcp
   </div>
 </section>
 
+<section id="strategyserver">
+  <div class="wrap">
+    <h2>External Strategy Workflow: StrategyServer</h2>
+    <p>
+      As of 25 October 2026, the maintainer's local strategy workflow uses
+      <strong>StrategyServer</strong>, replacing the previous local EPF workflow.
+      StrategyServer supplies strategy context and planning decisions;
+      Superretometer evaluates the claims and evidence supporting implementation
+      decisions. An external runner executes authorized work.
+    </p>
+    <p>
+      The public reference implementation remains standalone, with
+      <code>InMemoryStorage</code>. A StrategyServer adapter and automatic job
+      dispatcher are not bundled. Historical <code>epf_ready_id</code> provenance
+      remains compatible.
+      <a href="strategyserver.md">Workflow boundaries and compatibility</a>.
+    </p>
+  </div>
+</section>
+
 <!-- ── Architecture (shorter) ───────────────────────────── -->
 <section>
   <div class="wrap">
@@ -259,7 +280,7 @@ superretometer mcp
       </div>
       <div class="arch-card">
         <h3>CONTINUITY</h3>
-        <p><a href="#foundations-emergent">Emergent Memory</a> keeps evidence, decisions, and observations across sessions.</p>
+        <p>An external durable storage adapter can keep evidence across sessions. The bundled MCP server uses <code>InMemoryStorage</code>.</p>
       </div>
       <div class="arch-card">
         <h3>STRUCTURE + TRACE</h3>
@@ -304,23 +325,25 @@ superretometer mcp
       <a href="https://github.com/nikf2001" target="_blank" rel="noopener">Nikolai Fasting</a>
       and
       <a href="https://github.com/mkucharz" target="_blank" rel="noopener">Maciej Kucharz</a>
-      at Emergent Company, who built Emergent Memory and Emergent Strategy —
-      the persistent reasoning and adaptive planning substrate this harness
-      runs on.
+      at Emergent Company, who built Emergent Memory and Emergent Strategy.
+      These projects informed the original workflow. The maintainer's current
+      strategy service is described <a href="#strategyserver">above</a>; the
+      public package does not require these external services.
     </p>
 
     <div class="lineage-grid">
 
       <div class="lineage-card" id="foundations-emergent">
-        <h3>Emergent Memory &amp; Emergent Strategy</h3>
+        <h3>Emergent Memory &amp; Emergent Strategy — Background</h3>
         <p>
           <strong><a href="https://github.com/emergent-company/emergent.memory" target="_blank" rel="noopener">Emergent Memory</a></strong>
-          provides the persistent graph backbone: knowledge, evidence,
-          decisions, and observations survive across sessions.
+          informed the persistent graph architecture. The bundled reference
+          implementation uses <code>InMemoryStorage</code>; cross-session
+          persistence requires an external adapter.
         </p>
         <p>
           <strong><a href="https://github.com/emergent-company/emergent.strategy" target="_blank" rel="noopener">Emergent Strategy</a></strong>
-          closes the adaptive loop:
+          informed the original adaptive loop:
           <em>act &rarr; observe &rarr; learn &rarr; revise &rarr; act again</em>.
           Developed by
           <a href="https://github.com/nikf2001" target="_blank" rel="noopener">Nikolai Fasting</a>

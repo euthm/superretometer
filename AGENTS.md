@@ -19,7 +19,7 @@ Superretometer is the reference implementation of the Cognitive Harness specific
 
 - **Implementation must not silently redefine semantics.** A change in `cognitive_harness/` that alters warrant behavior MUST be accompanied by a spec change and conformance test update.
 - **Conformance tests are important.** A check that cannot fail is not evidence. Changing both implementation and expected test output in the same PR is a red flag.
-- **No private Memory/EPF assumptions** belong in the public implementation. The public codebase uses `InMemoryStorage` only.
+- **No private Memory or StrategyServer assumptions** belong in the public implementation. The public codebase uses `InMemoryStorage` only. StrategyServer is the maintainer's current external strategy service; EPF-based local workflows are historical. See `docs/strategyserver.md` for the boundary and legacy provenance compatibility.
 - **Relation/provenance semantics must be treated carefully.** Do not change edge directionality or relation types without a spec-change PR.
 - **SimulationGatePolicy changes** must be accompanied by spec updates in `spec/WARRANT.md` and `spec/TERMINOLOGY.md` and conformance tests in `tests/conformance/test_simulation_gates.py`.
 - **Run tests before proposing changes.** `python3 -m pytest tests/ -v` must pass.
