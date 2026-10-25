@@ -442,13 +442,19 @@ def test_multiple_weak_independent(storage, bench):
                     independent=True, source=src, evidence_ids=[f"ev-weak-{i}"])
         storage.add_evidence(f"ev-weak-{i}", f"weak-{i}", "verified", "data", [])
         storage.create_ko(ko)
-    ko_conc = mk_ko("weak-conc", "Efficiency consensus", TruthCategory.MODEL_DERIVED,
-        relations=[Relation(to=f"weak-{i}", type=RelationType.SUPPORTS) for i in range(3)])
+    ko_conc = mk_ko("weak-conc", "Efficiency consensus", TruthCategory.MODEL_DERIVED)
     storage.create_ko(ko_conc)
+    # Normative direction is evidence -> SUPPORTS -> conclusion. Declaring these
+    # on the conclusion pointed the edges the wrong way, so the three measurements
+    # were never traversed and the assertion held with the evidence deleted.
+    for i in range(3):
+        storage.create_relation(f"weak-{i}", "weak-conc", RelationType.SUPPORTS)
 
     analyzer = WarrantAnalyzer(storage)
     result = analyzer.compute_warrant("weak-conc")
     # Multiple genuinely independent observations should be WARRANTED
+    assert set(result.supporting_kos) == {"weak-conc", "weak-0", "weak-1", "weak-2"}, \
+        f"evidence not traversed: {result.supporting_kos}"
     bench.record("multi_weak_indep", True,
         result.warrant_status == WarrantStatus.WARRANTED,
         f"Multiple weak independent should be warranted; got {result.warrant_status.value}")

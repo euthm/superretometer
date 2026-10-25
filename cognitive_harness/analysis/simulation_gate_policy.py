@@ -207,11 +207,18 @@ class SimulationGatePolicy:
             )
         if warrant.warrant_status == WarrantStatus.UNWARRANTED:
             anti = [d.pattern.value for d in warrant.anti_pattern_diagnoses]
-            return GateResult(
-                "reality", GateStatus.BLOCK,
-                f"Structural defects in grounding: {anti}",
-                evidence=[str(d.violated_condition) for d in warrant.anti_pattern_diagnoses],
-            )
+            evidence = [str(d.violated_condition) for d in warrant.anti_pattern_diagnoses]
+            if anti:
+                reason = f"Structural defects in grounding: {anti}"
+            else:
+                # Unwarranted without a named anti-pattern: report the
+                # ungrounded premises rather than an empty defect list.
+                reason = (
+                    "Carrying quantities lack independent grounding: "
+                    f"{warrant.conditional_assumptions or warrant.dependent_kos}"
+                )
+                evidence = [str(c) for c in warrant.conditional_assumptions]
+            return GateResult("reality", GateStatus.BLOCK, reason, evidence=evidence)
         return GateResult(
             "reality", GateStatus.UNKNOWN,
             "Insufficient graph information for warrant evaluation.",
