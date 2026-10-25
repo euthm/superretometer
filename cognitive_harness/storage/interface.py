@@ -89,7 +89,7 @@ class StorageInterface(ABC):
 
     # ── Evidence ──────────────────────────────────────────────────────
     @abstractmethod
-    def add_evidence(self, evidence_id: str, claim_id: str, status: str, observation: str, records: list[dict]) -> str:
+    def add_evidence(self, evidence_id: str, claim_id: str, status: str, observation: str, records: list[dict], source_ko_id: str | None = None) -> str:
         ...
 
     @abstractmethod

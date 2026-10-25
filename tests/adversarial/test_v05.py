@@ -316,7 +316,9 @@ def test_circular(storage, bench):
     log.info("\n== CIRCULAR_DEPENDENCY ==")
     analyzer = WarrantAnalyzer(storage)
 
-    # POS: self-referential evidence
+    # Self-referential evidence check (Issue #12 item 3):
+    # detect_all_anti_patterns() no longer flags normal evidence attachment
+    # as CIRCULAR_DEPENDENCY because add_evidence writes claim_id == ko.id.
     ko = mk_ko("circ-a", "Calculated efficiency", TruthCategory.MODEL_DERIVED,
         evidence_ids=["ev-circ-1"])
     storage.create_ko(ko)
@@ -324,7 +326,8 @@ def test_circular(storage, bench):
     diagnoses = analyzer.detect_all_anti_patterns()
     got = any(d.pattern == AntiPattern.CIRCULAR_DEPENDENCY
               and "circ-a" in d.offending_ko_ids for d in diagnoses)
-    bench.record("circ_POS", True, got, "Self-referential evidence")
+    bench.record("circ_POS", False, got,
+        "Normal evidence attachment is not circular (Issue #12 item 3)")
 
     # NEG: independent evidence chain
     ko_b = mk_ko("circ-b", "Measured efficiency", TruthCategory.PHYSICAL_OBSERVATION,

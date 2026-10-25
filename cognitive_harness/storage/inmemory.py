@@ -213,7 +213,13 @@ class InMemoryStorage(StorageInterface):
 
     # ── Evidence ──────────────────────────────────────────────────────
 
-    def add_evidence(self, evidence_id, claim_id, status, observation, records):
+    def add_evidence(self, evidence_id, claim_id, status, observation, records, source_ko_id=None):
+        """Attach evidence to a claim.
+
+        source_ko_id (optional): the KO from which this evidence was
+        derived.  When source_ko_id == claim_id the evidence is
+        self-attesting.  When omitted, external source is assumed.
+        """
         ev = {
             "id": evidence_id,
             "claim_id": claim_id,
@@ -221,6 +227,8 @@ class InMemoryStorage(StorageInterface):
             "observation": observation,
             "records": records,
         }
+        if source_ko_id is not None:
+            ev["source_ko_id"] = source_ko_id
         self._evidence[evidence_id] = ev
         ko = self._kos.get(claim_id)
         if ko and evidence_id not in ko.evidence_ids:
@@ -295,7 +303,7 @@ class InMemoryStorage(StorageInterface):
             assumptions=list(p.ko_assumptions),
             scope=p.ko_scope,
             confidence=p.ko_confidence,
-            provenance=Provenance(source="proposal", author=p.proposer),
+            provenance=Provenance(source="proposal", author=p.proposer, independent=False),
         )
         self.create_ko(ko)
         p.created_ko_id = ko.id

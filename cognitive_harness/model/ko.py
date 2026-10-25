@@ -270,7 +270,7 @@ class Provenance:
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     revision: int = 1
     derived_from: str | None = None
-    independent: bool = True
+    independent: bool | None = None
 
 
 # ── 14. Relation ──────────────────────────────────────────────────────────
@@ -373,6 +373,10 @@ class ImplementationProvenance:
     tested_commit: str = ""                    # Commit against which tests were run
     tested_worktree_diff_sha256: str = ""      # Worktree diff SHA at test time
     test_timestamp: str = ""                   # ISO 8601 timestamp of test execution
+
+    # ── Code freshness (Gate 7) ──
+    blob_digest: str = ""                      # SHA-256 of path-scoped git blob tree
+    blob_paths: list[str] = field(default_factory=list)  # File paths included in blob_digest
 
     # ── Session linkage ──
     session_id: str = ""                       # CH session ID
@@ -548,5 +552,6 @@ class KnowledgeObject:
         return target in VALID_TRANSITIONS.get(self.epistemic_status, set())
 
     def __post_init__(self):
-        if self.provenance is None:
-            self.provenance = Provenance(source="system", author="system")
+        # Do NOT auto-create provenance. An unprovenanced KO must remain
+        # UNRESOLVED rather than being fabricated as independent.
+        pass
