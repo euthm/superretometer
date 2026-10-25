@@ -61,6 +61,10 @@ def canonical_remote(remote: str) -> str:
     if not r:
         return ""
 
+    # Strip trailing slashes first, or a remote written as ".../repo.git/"
+    # keeps its .git suffix and stops matching the same repository.
+    r = r.rstrip("/")
+
     # Strip trailing .git
     if r.endswith(".git"):
         r = r[:-4]

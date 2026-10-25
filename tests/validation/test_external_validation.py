@@ -13,6 +13,7 @@ PRINCIPLE: Do NOT modify policy to make cases pass.
 Report mismatches with root cause before any fix.
 """
 import logging
+import sys
 from cognitive_harness.model.ko import (
     KnowledgeObject, KOType, TruthCategory, EpistemicStatus, ConfidenceLevel,
     RelationType, Provenance, FalsifiableValidator, Relation,
@@ -365,7 +366,7 @@ def test_reactor_rejected_invariant():
 # NEGATIVE CONTROLS (5)
 # ================================================================
 
-def nc1_orphan():
+def test_nc1_orphan():
     log.info("\n== NC1: Orphan ==")
     st = InMemoryStorage()
     pol = SimulationGatePolicy(st)
@@ -383,7 +384,7 @@ def nc1_orphan():
     return r
 
 
-def nc2_out_of_scope():
+def test_nc2_out_of_scope():
     log.info("\n== NC2: Out of scope ==")
     st = InMemoryStorage()
     pol = SimulationGatePolicy(st)
@@ -405,7 +406,7 @@ def nc2_out_of_scope():
     return r
 
 
-def nc3_ungrounded():
+def test_nc3_ungrounded():
     log.info("\n== NC3: Ungrounded carrying quantity ==")
     st = InMemoryStorage()
     pol = SimulationGatePolicy(st)
@@ -429,7 +430,7 @@ def nc3_ungrounded():
     return r
 
 
-def nc4_invalid_invariant():
+def test_nc4_invalid_invariant():
     log.info("\n== NC4: Invalid invariant ==")
     st = InMemoryStorage()
     pol = SimulationGatePolicy(st)
@@ -452,7 +453,7 @@ def nc4_invalid_invariant():
     return r
 
 
-def nc5_all_valid():
+def test_nc5_all_valid():
     log.info("\n== NC5: All gates valid (positive control) ==")
     st = InMemoryStorage()
     pol = SimulationGatePolicy(st)
@@ -520,11 +521,11 @@ def run_validation():
         ("D2-C3: thermal storage (placeholder param)", test_thermal_placeholder_param),
         ("D3-C1: reactor baseline (all pass)", test_reactor_baseline_all_pass),
         ("D3-C2: reactor rejected invariant", test_reactor_rejected_invariant),
-        ("NC1: orphan", nc1_orphan),
-        ("NC2: out of scope", nc2_out_of_scope),
-        ("NC3: ungrounded carrying qty", nc3_ungrounded),
-        ("NC4: scope-invalid invariant", nc4_invalid_invariant),
-        ("NC5: all gates valid", nc5_all_valid),
+        ("NC1: orphan", test_nc1_orphan),
+        ("NC2: out of scope", test_nc2_out_of_scope),
+        ("NC3: ungrounded carrying qty", test_nc3_ungrounded),
+        ("NC4: scope-invalid invariant", test_nc4_invalid_invariant),
+        ("NC5: all gates valid", test_nc5_all_valid),
     ]
 
     results = {}
@@ -569,7 +570,10 @@ def run_validation():
     else:
         log.info(f"MISMATCHES: {mismatches}")
     log.info("=" * 72)
+    return failed + mismatches
 
 
 if __name__ == "__main__":
-    run_validation()
+    # A runner that always exits 0 cannot fail a build, so a regression in the
+    # negative controls would be invisible.
+    sys.exit(1 if run_validation() else 0)

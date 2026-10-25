@@ -96,3 +96,9 @@ print(f"  Warrant: {result.warrant_status.value}")
 print(f"  Supporting: {len(result.supporting_kos)}")
 print(f"  Independent: {len(result.independent_kos)}")
 print(f"  Dependent: {len(result.dependent_kos)}")
+
+# The FEA result is declared independent=False on purpose, so UNWARRANTED is
+# the intended outcome. Asserted so the CI example step can actually fail.
+assert result.warrant_status.value == "unwarranted", result.warrant_status.value
+assert result.dependent_kos == ["cable-stress-model"], result.dependent_kos
+assert "static-equilibrium" in result.independent_kos

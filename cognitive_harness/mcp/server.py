@@ -238,6 +238,18 @@ class MCPServer:
             "supporting_kos": result.supporting_kos,
             "independent_kos": result.independent_kos,
             "dependent_kos": result.dependent_kos,
+            # CONDITIONALLY_WARRANTED is defined as the status that exposes its
+            # conditions; dropping them here left the caller with a bare verdict.
+            "conditional_assumptions": result.conditional_assumptions,
+            "cycles": result.cycles,
+            "independence": {
+                "evidence_count": result.independence.evidence_count,
+                "independent_root_count": result.independence.independent_root_count,
+                "root_sets": {k: sorted(v) for k, v in result.independence.root_sets.items()},
+                "shared_ancestors": {
+                    k: sorted(v) for k, v in result.independence.shared_ancestors.items()
+                },
+            } if result.independence else None,
             "anti_pattern_diagnoses": [
                 {
                     "pattern": d.pattern.value,
