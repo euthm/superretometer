@@ -2,10 +2,18 @@
 
 **Reference implementation of the Cognitive Harness specification — structural reasoning and epistemic warrant for autonomous engineering agents.**
 
-## Latest Release
+## Repository version and updates
 
-**v0.6.4** — Direction-aware traversal + enumeration completeness (fail-closed).
-[Release notes](docs/releases/v0.6.4.md) · [Changelog](CHANGELOG.md)
+The current repository package version is **0.7.0** (see `pyproject.toml`).
+A Git checkout, a published package and a running MCP process can be different
+revisions. [Update and verify a local MCP installation](docs/local-update.md).
+
+For one optional public CH + Harness2 + Julia-boundary smoke test, see
+[the toolchain example](examples/toolchain_pilot/README.md). It uses scripted
+proposals by default; it does not add H2/Julia MCP tools.
+
+Historical v0.6.4: [release notes](docs/releases/v0.6.4.md).
+[Changelog](CHANGELOG.md).
 
 An AI agent can produce plausible answers, run tests, and retain large amounts of
 memory. That does not mean its conclusions follow from the evidence.
@@ -338,11 +346,15 @@ is not endorsed by the original authors. See `docs/` for detailed attribution.
 
 ## Project status
 
-v0.6.5 candidate — Packaged MCP server, CLI, and distribution. [PR #8](https://github.com/euthm/superretometer/pull/8)
-v0.6.4 — Direction-aware traversal + enumeration completeness.
-v0.1.0 — First public release. Specification and reference implementation are
-stable. The conformance suite defines the behavioral contract. Breaking changes
-to the model or warrant semantics will require a new major version.
+Repository package version **0.7.0** includes the packaged MCP server/CLI,
+provenance and warrant corrections, and code-freshness checking. The project is
+classified as Alpha in `pyproject.toml`; a passing example is not production
+approval. The conformance suite defines the behavioral contract.
+
+The optional toolchain examples live in the Git checkout. H2 and Julia remain
+external and optional. Updating or pulling this repository does not restart a
+running MCP process. See [local updates](docs/local-update.md) for installation,
+reconnection and verification.
 
 ## License
 
