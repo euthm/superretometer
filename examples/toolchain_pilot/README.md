@@ -4,6 +4,10 @@ Review one PR and run one command after optional dependency setup. No private
 repository, AI1, Memory, StrategyServer, OpenCode or model account is needed for
 the default test. The example does not modify CH core, specs, gates or MCP.
 
+For installing or updating the MCP server separately, see
+[local MCP updates](../../docs/local-update.md). This example runs from a Git
+checkout and is not activated by starting the MCP server.
+
 ## Setup once
 
 Use Python 3.12 or 3.13 (upstream H2 requires >=3.12,<3.14), preferably in your
