@@ -271,3 +271,15 @@ class TestResolveChIdFallback:
 
         result = adapter._resolve_ch_id(ch_id)
         assert result == mem_uuid
+
+
+class TestLookupFiltering:
+    """ch:lookup: objects must not leak into CH graph enumeration."""
+
+    def test_is_lookup_key(self):
+        from transports.memory_adapter import MemoryAdapter
+
+        assert MemoryAdapter._is_lookup_key("ch:lookup:abc-123") is True
+        assert MemoryAdapter._is_lookup_key("ch:ko:abc-123") is False
+        assert MemoryAdapter._is_lookup_key("admin:foo") is False
+        assert MemoryAdapter._is_lookup_key("somekey") is False
