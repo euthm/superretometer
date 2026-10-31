@@ -27,6 +27,7 @@ from cognitive_harness.orchestration.engine import OrchestrationEngine
 from cognitive_harness.model.ko import GateStatus
 from cognitive_harness.model.proposal import Proposal, ProposalType
 from cognitive_harness.exceptions import IncompleteEnumerationError
+from cognitive_harness.mcp.protocol import tool_result
 
 # Local adapter
 sys.path.insert(0, os.path.dirname(__file__))
@@ -247,7 +248,12 @@ class RuntimeServer:
                 tool_name = params.get("name", "")
                 tool_args = params.get("arguments", {})
                 result = self._handle_tool(tool_name, tool_args)
-                self._send_response(id=req_id, result=result)
+                self._send_response(
+                    id=req_id,
+                    result=tool_result(
+                        result, is_error=isinstance(result, dict) and "error" in result
+                    ),
+                )
             elif method == "tools/list":
                 tools = self._list_tools()
                 self._send_response(id=req_id, result={"tools": tools})
