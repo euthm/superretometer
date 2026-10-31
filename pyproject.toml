@@ -29,6 +29,7 @@ superretometer = "cognitive_harness.cli:main"
 mcp = []
 dev = [
     "pytest>=7.0",
+    "requests>=2.28",
 ]
 
 [tool.setuptools.packages.find]

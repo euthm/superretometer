@@ -386,6 +386,11 @@ class MemoryAdapter(StorageInterface):
         return f"ch:ko:{ch_id}"
 
     @staticmethod
+    def _is_lookup_key(key: str) -> bool:
+        """Check if a key is an internal lookup object (not a CH KnowledgeObject)."""
+        return key.startswith("ch:lookup:")
+
+    @staticmethod
     def _ch_id_from_key(key: str) -> str | None:
         """Extract CH ID from a Memory key, or None if not a CH key."""
         if key.startswith("ch:ko:"):
@@ -401,6 +406,11 @@ class MemoryAdapter(StorageInterface):
         3. Lookup object: search for key ch:lookup:{ko_id} (textual, indexed).
         4. KO object: search for key ch:ko:{ko_id} (UUID key, may be missing).
         5. Direct UUID fetch: try GET /objects/{ko_id} (works if CH-ID == Memory UUID).
+
+        LIMITATION: Steps 3-4 rely on Memory's semantic search, which may not
+        index newly created objects immediately (observed: 5-10s delay). During
+        this window, resolution falls through to step 5 or returns the input.
+        Memory server (v0.41.148) has no exact key-based lookup endpoint.
         Returns Memory UUID. Falls back to input if not found.
         """
         if ko_id in self._ko_id_map:
@@ -963,6 +973,9 @@ class MemoryAdapter(StorageInterface):
 
             # For each key, search to find the object
             for key in seen_keys:
+                # Skip internal lookup objects — not CH KnowledgeObjects
+                if self._is_lookup_key(key):
+                    continue
                 search_resp = self._post("/api/graph/search", {
                     "query": key,
                     "projectId": self.project_id,
@@ -989,12 +1002,19 @@ class MemoryAdapter(StorageInterface):
         seen_ids = set()
         def add_if_new(obj):
             oid = obj.get("id", "")
-            if oid and oid not in seen_ids:
-                seen_ids.add(oid)
-                kos.append(memory_object_to_ko(obj))
+            key = obj.get("key", "")
+            if not oid or oid in seen_ids:
+                return
+            # Skip internal lookup objects
+            if self._is_lookup_key(key):
+                return
+            seen_ids.add(oid)
+            kos.append(memory_object_to_ko(obj))
 
         # Search for common key prefixes used by this adapter
         prefixes = ["ch:ko:", "admin:", "Concept"]
+        # Explicitly exclude ch:lookup: — those are internal mapping objects
+        lookup_prefix = "ch:lookup:"
         for prefix in prefixes:
             search_resp = self._post("/api/graph/search", {
                 "query": prefix,
