@@ -139,9 +139,9 @@ class TestIndependentNone:
 
 
 class TestCreateKoMemoryUUID:
-    """create_ko must persist ch_memory_uuid via PATCH."""
+    """create_ko must persist a lookup object mapping CH-ID → Memory UUID."""
 
-    def test_create_ko_patches_ch_memory_uuid(self):
+    def test_create_ko_posts_lookup_object(self):
         from transports.memory_adapter import MemoryAdapter
         from cognitive_harness.model.ko import KnowledgeObject, KOType
 
@@ -154,25 +154,31 @@ class TestCreateKoMemoryUUID:
         adapter._created_ids = set()
 
         ko = KnowledgeObject(type=KOType.FINDING, title="test")
+        ch_id = ko.id
         mem_uuid = str(uuidmod.uuid4())
 
-        # Mock _post to return controlled UUID
-        adapter._post = MagicMock(return_value={"id": mem_uuid})
-        adapter._patch = MagicMock()
+        # Mock _post to return controlled UUID for both KO and lookup
+        post_calls = []
+        def mock_post(path, body):
+            post_calls.append((path, body))
+            return {"id": mem_uuid}
+        adapter._post = MagicMock(side_effect=mock_post)
         adapter._resolve_ch_id = lambda x: x
         adapter._create_edge = MagicMock()
 
         result = adapter.create_ko(ko)
         assert result == mem_uuid
 
-        # Verify PATCH was called with ch_memory_uuid
-        adapter._patch.assert_called_once()
-        call_args = adapter._patch.call_args
-        assert "properties" in call_args[0][1]
-        props = call_args[0][1]["properties"]
-        assert props.get("ch_memory_uuid") == mem_uuid
+        # Verify: 2 POST calls — KO object and lookup object
+        assert len(post_calls) == 2
+        ko_call = post_calls[0]
+        lookup_call = post_calls[1]
+        assert ko_call[0] == "/api/graph/objects"
+        assert lookup_call[0] == "/api/graph/objects"
+        assert lookup_call[1]["key"] == f"ch:lookup:{ch_id}"
+        assert lookup_call[1]["properties"]["ch_memory_uuid"] == mem_uuid
 
-    def test_create_ko_raises_on_patch_failure(self):
+    def test_create_ko_raises_on_lookup_post_failure(self):
         from transports.memory_adapter import MemoryAdapter
         from cognitive_harness.model.ko import KnowledgeObject, KOType
 
@@ -187,23 +193,27 @@ class TestCreateKoMemoryUUID:
         ko = KnowledgeObject(type=KOType.FINDING, title="test")
         mem_uuid = str(uuidmod.uuid4())
 
-        adapter._post = MagicMock(return_value={"id": mem_uuid})
-
-        # PATCH fails with HTTPError
-        fake_resp = _FakeResponse(500)
-        http_err = requests.HTTPError(response=fake_resp)
-        adapter._patch = MagicMock(side_effect=http_err)
+        # First POST succeeds, second (lookup) fails
+        call_count = [0]
+        def mock_post(path, body):
+            call_count[0] += 1
+            if call_count[0] == 2:
+                fake_resp = _FakeResponse(500)
+                raise requests.HTTPError(response=fake_resp)
+            return {"id": mem_uuid}
+        adapter._post = MagicMock(side_effect=mock_post)
         adapter._resolve_ch_id = lambda x: x
         adapter._create_edge = MagicMock()
 
-        with pytest.raises(RuntimeError, match="ch_memory_uuid"):
+        with pytest.raises(RuntimeError, match="lookup"):
             adapter.create_ko(ko)
 
 
 class TestResolveChIdFallback:
-    """_resolve_ch_id reads ch_memory_uuid from properties."""
+    """_resolve_ch_id resolves CH-ID → Memory UUID via lookup object."""
 
-    def test_resolve_reads_ch_memory_uuid_from_direct_fetch(self):
+    def test_resolve_via_lookup_object(self):
+        """End-to-end: CH-ID A → lookup object → Memory UUID B."""
         from transports.memory_adapter import MemoryAdapter
 
         adapter = MemoryAdapter.__new__(MemoryAdapter)
@@ -212,23 +222,52 @@ class TestResolveChIdFallback:
         adapter.project_id = "test-project"
         adapter._ko_id_map = {}
         adapter._memory_id_map = {}
-        adapter._lookup_by_key = MagicMock(return_value=None)
 
         ch_id = str(uuidmod.uuid4())
         mem_uuid = str(uuidmod.uuid4())
+        lookup_uuid = str(uuidmod.uuid4())
 
-        # Direct UUID fetch returns object with ch_memory_uuid
+        # _lookup_by_key finds lookup object for ch:lookup:{ch_id}
+        def mock_lookup(key):
+            if key == f"ch:lookup:{ch_id}":
+                return lookup_uuid
+            return None
+        adapter._lookup_by_key = MagicMock(side_effect=mock_lookup)
+
+        # _get returns lookup object with ch_memory_uuid
         adapter._get = MagicMock(return_value={
-            "id": ch_id,
-            "key": f"ch:ko:{ch_id}",
+            "id": lookup_uuid,
+            "key": f"ch:lookup:{ch_id}",
             "properties": {"ch_memory_uuid": mem_uuid},
         })
 
         result = adapter._resolve_ch_id(ch_id)
         assert result == mem_uuid, (
-            f"_resolve_ch_id should return ch_memory_uuid ({mem_uuid}), got {result}"
+            f"Expected {mem_uuid}, got {result}"
         )
-
-        # Verify cache was populated
         assert adapter._ko_id_map[ch_id] == mem_uuid
         assert adapter._memory_id_map[mem_uuid] == ch_id
+
+    def test_resolve_falls_back_to_ko_search(self):
+        """If no lookup object, search for KO by key."""
+        from transports.memory_adapter import MemoryAdapter
+
+        adapter = MemoryAdapter.__new__(MemoryAdapter)
+        adapter._headers = {}
+        adapter.server_url = "http://test"
+        adapter.project_id = "test-project"
+        adapter._ko_id_map = {}
+        adapter._memory_id_map = {}
+
+        ch_id = str(uuidmod.uuid4())
+        mem_uuid = str(uuidmod.uuid4())
+
+        # _lookup_by_key only finds KO object, not lookup
+        def mock_lookup(key):
+            if key == f"ch:ko:{ch_id}":
+                return mem_uuid
+            return None
+        adapter._lookup_by_key = MagicMock(side_effect=mock_lookup)
+
+        result = adapter._resolve_ch_id(ch_id)
+        assert result == mem_uuid
