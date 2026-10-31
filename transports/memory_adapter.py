@@ -395,41 +395,48 @@ class MemoryAdapter(StorageInterface):
     def _resolve_ch_id(self, ko_id: str) -> str:
         """Resolve a CH ID or Memory UUID to the Memory UUID.
 
-        If ko_id is already in _ko_id_map (forward cache), return the UUID.
-        If ko_id is in _memory_id_map (reverse cache), it's a UUID — return it.
-        If ko_id is an adopted Memory UUID, look up its wrapper.
-        Otherwise, search by exact key ch:ko:{ko_id} and cache the result.
-        Fallback: try direct UUID fetch (CH ID may be stored as ch_memory_uuid).
+        Order of resolution:
+        1. Forward cache (_ko_id_map).
+        2. Reverse cache (_memory_id_map).
+        3. Lookup object: search for key ch:lookup:{ko_id} (textual, indexed).
+        4. KO object: search for key ch:ko:{ko_id} (UUID key, may be missing).
+        5. Direct UUID fetch: try GET /objects/{ko_id} (works if CH-ID == Memory UUID).
         Returns Memory UUID. Falls back to input if not found.
         """
-        # Already a cached CH ID -> UUID
         if ko_id in self._ko_id_map:
             return self._ko_id_map[ko_id]
-        # Already a cached UUID
         if ko_id in self._memory_id_map:
             return ko_id
-        # Search by exact key
+        # Lookup object — deterministic CH-ID → Memory UUID mapping.
+        # Key prefix "ch:lookup:" is textual and reliably indexed by search.
+        lookup_key = f"ch:lookup:{ko_id}"
+        lookup_uuid = self._lookup_by_key(lookup_key)
+        if lookup_uuid:
+            lookup_obj = self._get(f"/api/graph/objects/{lookup_uuid}")
+            mem_uuid = lookup_obj.get("properties", {}).get("ch_memory_uuid")
+            if mem_uuid:
+                self._ko_id_map[ko_id] = mem_uuid
+                self._memory_id_map[mem_uuid] = ko_id
+                return mem_uuid
+        # KO object — search by exact key ch:ko:{ko_id}
         mem_uuid = self._lookup_by_key(self._ch_key(ko_id))
         if mem_uuid:
             self._ko_id_map[ko_id] = mem_uuid
             self._memory_id_map[mem_uuid] = ko_id
             return mem_uuid
-        # Try as raw Memory UUID — check if it has an adopted wrapper
+        # Direct UUID fetch — works if CH-ID == Memory UUID
         try:
             uuid.UUID(ko_id)
             obj = self._get(f"/api/graph/objects/{ko_id}")
             wrapper_id = obj.get("properties", {}).get("ch_adopted_wrapper_id")
             if wrapper_id:
-                # Resolve wrapper_id to its UUID
                 wrapper_uuid = self._resolve_ch_id(wrapper_id)
                 return wrapper_uuid
-            # Found as direct UUID — check if it has ch_memory_uuid
             ch_mem_uuid = obj.get("properties", {}).get("ch_memory_uuid")
             if ch_mem_uuid:
                 self._ko_id_map[ko_id] = ch_mem_uuid
                 self._memory_id_map[ch_mem_uuid] = ko_id
                 return ch_mem_uuid
-            # No ch_memory_uuid — this IS the object (CH ID == Memory UUID)
             key = obj.get("key", "")
             ch_id = self._ch_id_from_key(key)
             if ch_id:
@@ -438,7 +445,6 @@ class MemoryAdapter(StorageInterface):
             return ko_id
         except (ValueError, requests.HTTPError):
             pass
-        # Not found — return the input; caller will get 404 from server
         return ko_id
 
     def _resolve_to_ch_id(self, mem_uuid: str) -> str:
@@ -549,17 +555,28 @@ class MemoryAdapter(StorageInterface):
         self._ko_id_map[ko.id] = mem_uuid
         self._memory_id_map[mem_uuid] = ko.id
 
-        # Persist ch_memory_uuid in properties for restart recovery.
-        # Memory server lacks exact key lookup; search may not index UUID keys.
-        # PATCH fails → creation fails (fail closed).
+        # Persist a deterministic lookup object mapping CH-ID → Memory UUID.
+        # Memory server lacks exact key lookup and doesn't index UUID keys
+        # reliably. The lookup key uses a textual prefix (ch:lookup:) that IS
+        # indexed, enabling search-based recovery after process restart.
+        lookup_key = f"ch:lookup:{ko.id}"
+        lookup_obj = {
+            "type": "Concept",
+            "key": lookup_key,
+            "projectId": self.project_id,
+            "properties": {
+                "title": f"ch:lookup:{ko.id}",
+                "ch_memory_uuid": mem_uuid,
+                "ch_lookup_for": ko.id,
+            },
+        }
         try:
-            self._patch(f"/api/graph/objects/{mem_uuid}", {
-                "properties": {"ch_memory_uuid": mem_uuid}
-            })
+            lookup_result = self._post("/api/graph/objects", lookup_obj)
+            self._created_ids.add(lookup_result["id"])
         except requests.HTTPError as e:
             code = e.response.status_code if e.response is not None else None
             raise RuntimeError(
-                f"Failed to persist ch_memory_uuid for KO {ko.id} "
+                f"Failed to persist lookup for KO {ko.id} "
                 f"(Memory UUID {mem_uuid}): HTTP {code}"
             ) from e
 
