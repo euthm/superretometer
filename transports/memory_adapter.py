@@ -125,7 +125,8 @@ def ko_to_memory_object(ko: KnowledgeObject) -> dict:
         props["ch_provenance_revision"] = p.revision
         if p.derived_from:
             props["ch_provenance_derived_from"] = p.derived_from
-        props["ch_provenance_independent"] = p.independent
+        if p.independent is not None:
+            props["ch_provenance_independent"] = p.independent
 
     # Derivation
     if ko.derivation:
@@ -234,7 +235,7 @@ def memory_object_to_ko(obj: dict) -> KnowledgeObject:
             timestamp=ts,
             revision=props.get("ch_provenance_revision", 1),
             derived_from=props.get("ch_provenance_derived_from"),
-            independent=props.get("ch_provenance_independent", True),
+            independent=props.get("ch_provenance_independent", None),
         )
     elif isinstance(props.get("provenance"), dict):
         p = props["provenance"]
@@ -248,7 +249,7 @@ def memory_object_to_ko(obj: dict) -> KnowledgeObject:
             timestamp=ts,
             revision=p.get("revision", 1),
             derived_from=p.get("derived_from"),
-            independent=p.get("independent", True),
+            independent=p.get("independent", None),
         )
 
     # Parse derivation
@@ -547,6 +548,20 @@ class MemoryAdapter(StorageInterface):
         # Record identity mapping (v0.6.4)
         self._ko_id_map[ko.id] = mem_uuid
         self._memory_id_map[mem_uuid] = ko.id
+
+        # Persist ch_memory_uuid in properties for restart recovery.
+        # Memory server lacks exact key lookup; search may not index UUID keys.
+        # PATCH fails → creation fails (fail closed).
+        try:
+            self._patch(f"/api/graph/objects/{mem_uuid}", {
+                "properties": {"ch_memory_uuid": mem_uuid}
+            })
+        except requests.HTTPError as e:
+            code = e.response.status_code if e.response is not None else None
+            raise RuntimeError(
+                f"Failed to persist ch_memory_uuid for KO {ko.id} "
+                f"(Memory UUID {mem_uuid}): HTTP {code}"
+            ) from e
 
         # Store relations as edges (resolve CH IDs to Memory UUIDs)
         for rel in ko.relations:
