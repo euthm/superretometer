@@ -1,6 +1,8 @@
 """pytest fixtures for adversarial benchmark."""
-import pytest
+import sys, os, pytest
 import logging
+# Add transports/ to path for memory_adapter and runtime_server imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "transports"))
 from cognitive_harness.storage.inmemory import InMemoryStorage
 from cognitive_harness.analysis.warrant_analyzer import WarrantAnalyzer
 

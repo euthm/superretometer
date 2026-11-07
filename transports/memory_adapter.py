@@ -1132,13 +1132,16 @@ class MemoryAdapter(StorageInterface):
         )
         mem_obj = ko_to_memory_object(ev_ko)
         mem_obj["projectId"] = self.project_id
-        self._post("/api/graph/objects", mem_obj)
-        self._created_ids.add(evidence_id)
+        ev_result = self._post("/api/graph/objects", mem_obj)
+        ev_mem_uuid = ev_result.get("id", evidence_id)
+        self._created_ids.add(ev_mem_uuid)
+        self._ko_id_map[evidence_id] = ev_mem_uuid
+        self._memory_id_map[ev_mem_uuid] = evidence_id
 
         # Link to claim via edge — must use Memory UUIDs
-        ev_uuid = evidence_id  # evidence KO was created with this ID
         claim_uuid = self._resolve_ch_id(claim_id)
-        self._create_edge(ev_uuid, claim_uuid, edge_type)
+        if not self._create_edge(ev_mem_uuid, claim_uuid, edge_type):
+            log.warning("Failed to create %s edge %s -> %s", edge_type, ev_mem_uuid, claim_uuid)
 
         # Update claim's evidence_ids
         claim = self.get_ko(claim_id)
@@ -1282,8 +1285,12 @@ class MemoryAdapter(StorageInterface):
                 "ch_proposal_ko_type": proposal.ko_type.value if proposal.ko_type and hasattr(proposal.ko_type, 'value') else str(proposal.ko_type) if proposal.ko_type else "",
                 "ch_proposal_ko_title": proposal.ko_title,
                 "ch_proposal_ko_content": json.dumps(proposal.ko_content) if isinstance(proposal.ko_content, (dict, list)) else str(proposal.ko_content) if proposal.ko_content else "",
+                "ch_proposal_ko_truth_category": proposal.ko_truth_category.value if proposal.ko_truth_category is not None else "",
                 "ch_proposal_rejection_reason": proposal.rejection_reason,
                 "ch_proposal_created_ko_id": proposal.created_ko_id,
+                "ch_proposal_evidence_claim_id": proposal.evidence_claim_id,
+                "ch_proposal_evidence_observation": proposal.evidence_observation,
+                "ch_proposal_evidence_relation_type": proposal.evidence_relation_type,
             },
         }
         try:
@@ -1330,8 +1337,18 @@ class MemoryAdapter(StorageInterface):
                             p.ko_content = ko_content_raw
                     else:
                         p.ko_content = None
+                    tc_raw = props.get("ch_proposal_ko_truth_category", "")
+                    if tc_raw:
+                        try:
+                            p.ko_truth_category = TruthCategory(tc_raw)
+                        except ValueError:
+                            pass  # Leave as None on invalid
                 elif p_type in (ProposalType.UPDATE_KO, ProposalType.TRANSITION_STATUS):
                     p.target_ko_id = props.get("ch_proposal_target_ko_id", "")
+                elif p_type == ProposalType.CREATE_EVIDENCE:
+                    p.evidence_claim_id = props.get("ch_proposal_evidence_claim_id", "")
+                    p.evidence_observation = props.get("ch_proposal_evidence_observation", "")
+                    p.evidence_relation_type = props.get("ch_proposal_evidence_relation_type", "supports")
                 self._proposals[p.id] = p
             else:
                 raise ValueError(f"Proposal {proposal_id} not found")
