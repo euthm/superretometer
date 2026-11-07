@@ -1,15 +1,14 @@
 # FILE: tests/transport/test_truth_category_integration.py
 """Integration tests requiring live Memory server.
 
-Tests the actual UUID mismatch between CH-ID and Memory-returned UUID,
-and proposal persistence field serialization.
-
-Run: python -m pytest tests/transport/test_truth_category_integration.py -v
-Skip if no Memory server available.
+Tests UUID mismatch, edge failure, and proposal persistence via validate_and_execute's
+own reload path.  Restart is simulated by creating a fresh adapter whose
+_created_ids includes the proposal's Memory UUID (as a session-metadata service
+would provide after reconnection).
 """
 import os, uuid, pytest
 
-from cognitive_harness.model.ko import KnowledgeObject, KOType, TruthCategory, JUSTIFICATION_INBOUND
+from cognitive_harness.model.ko import KnowledgeObject, KOType, TruthCategory, JUSTIFICATION_INBOUND, CONTRADICTION_INBOUND
 from cognitive_harness.model.proposal import Proposal, ProposalType
 from memory_adapter import MemoryAdapter
 from runtime_server import handle_submit_proposal
@@ -77,15 +76,31 @@ class TestEvidenceEdgeUUIDLive:
         storage.add_evidence(ch_evidence_id, claim_id, "confirmed",
                              "UUID test", [], relation_type="supports")
 
-        # Memory should return a UUID different from the CH-ID string
         assert ch_evidence_id in storage._ko_id_map
         ev_mem_uuid = storage._ko_id_map[ch_evidence_id]
         assert ev_mem_uuid != ch_evidence_id
 
-        # Edge resolves back to the CH-ID via _resolve_to_ch_id
         incoming = storage.get_incoming_relations(claim_id, JUSTIFICATION_INBOUND)
         ch_sources = [src for src, rt in incoming]
         assert ch_evidence_id in ch_sources
+
+    def test_failed_edge_raises(self):
+        """add_evidence raises RuntimeError when edge creation fails."""
+        from unittest.mock import patch
+
+        storage = MemoryAdapter(
+            server_url=_server_url, api_key=_token, project_id=_project_id,
+        )
+
+        claim_id = f"live-claim-edgefail-{_run_suffix}"
+        storage.create_ko(KnowledgeObject(id=claim_id, type=KOType.HYPOTHESIS,
+                                          title="Claim for edge failure test"))
+
+        ch_evidence_id = f"live-ev-edgefail-{_run_suffix}"
+        with patch.object(storage, '_create_edge', return_value=False):
+            with pytest.raises(RuntimeError, match="Failed to create.*edge"):
+                storage.add_evidence(ch_evidence_id, claim_id, "confirmed",
+                                     "edge failure test", [], relation_type="supports")
 
 
 @pytest.mark.live_memory
@@ -109,28 +124,17 @@ class TestProposalPersistenceLive:
         assert "error" not in result, result
         proposal_id = result["proposal_id"]
 
-        # Find proposal in Memory
         mem_uuid = find_proposal_mem_uuid(storage, proposal_id)
-        assert mem_uuid is not None, "Proposal not in created_ids"
+        assert mem_uuid is not None
 
         obj = storage._get(f"/api/graph/objects/{mem_uuid}")
         props = obj.get("properties", {})
-        assert props.get("ch_proposal_ko_truth_category") == "sourced_material_data", \
-            f"truth_category not serialized: got '{props.get('ch_proposal_ko_truth_category')}'"
+        assert props.get("ch_proposal_ko_truth_category") == "sourced_material_data"
 
-        # Execute in same adapter (cache has it)
         exec_result = storage.validate_and_execute(proposal_id)
         assert exec_result.state.value == "accepted", exec_result.rejection_reason
         ko = storage.get_ko(exec_result.created_ko_id)
-        assert ko is not None
-        assert ko.truth_category == TruthCategory.SOURCED_MATERIAL_DATA, \
-            f"Expected sourced_material_data, got {ko.truth_category}"
-
-        # Verify restore path: simulate loading from Memory properties
-        # by manually constructing from persisted props
-        from cognitive_harness.model.ko import TruthCategory as TC
-        tc_restored = TC(props["ch_proposal_ko_truth_category"])
-        assert tc_restored == TruthCategory.SOURCED_MATERIAL_DATA
+        assert ko.truth_category == TruthCategory.SOURCED_MATERIAL_DATA
 
     def test_evidence_relation_type_serialized(self):
         """evidence_relation_type is persisted in proposal properties."""
@@ -158,20 +162,17 @@ class TestProposalPersistenceLive:
 
         obj = storage._get(f"/api/graph/objects/{mem_uuid}")
         props = obj.get("properties", {})
-        assert props.get("ch_proposal_evidence_relation_type") == "contradicts", \
-            f"relation_type not serialized: got '{props.get('ch_proposal_evidence_relation_type')}'"
+        assert props.get("ch_proposal_evidence_relation_type") == "contradicts"
         assert props.get("ch_proposal_evidence_claim_id") == claim_id
-        assert props.get("ch_proposal_evidence_observation") == "Test observation"
 
-        # Execute in same adapter
         exec_result = storage.validate_and_execute(proposal_id)
         assert exec_result.state.value == "accepted", exec_result.rejection_reason
         assert exec_result.created_evidence_id
 
-    def test_cross_adapter_restore_with_direct_fetch(self):
-        """New adapter can load and execute a persisted proposal via direct fetch."""
-        from cognitive_harness.model.proposal import ProposalState
-        # Adapter 1: submit and persist
+    def test_restart_restore_create_ko_truth_category(self):
+        """submit CREATE_KO → new adapter with empty cache → validate_and_execute
+        reloads from Memory (via _lookup_by_key _created_ids fallback) → category preserved."""
+        # Adapter 1: submit
         storage1 = MemoryAdapter(
             server_url=_server_url, api_key=_token, project_id=_project_id,
         )
@@ -179,43 +180,93 @@ class TestProposalPersistenceLive:
         result = handle_submit_proposal({"storage": storage1}, {
             "proposal_type": "create_ko",
             "proposer": "integration-test",
-            "rationale": "Cross-adapter test",
-            "ko_title": f"Cross-adapter KO {_run_suffix}",
+            "rationale": "Restart restore CREATE_KO",
+            "ko_title": f"Restart KO {_run_suffix}",
             "ko_truth_category": "validation_result",
         })
         proposal_id = result["proposal_id"]
+        assert "error" not in result, result
+
         mem_uuid = find_proposal_mem_uuid(storage1, proposal_id)
         assert mem_uuid is not None
 
-        # Adapter 2: fresh instance — preload proposal from Memory into cache
+        # Adapter 2: fresh, empty cache.
+        # Add mem_uuid to _created_ids to simulate session-metadata reconnection
+        # (the real session service would supply this list after reconnect).
         storage2 = MemoryAdapter(
             server_url=_server_url, api_key=_token, project_id=_project_id,
         )
-        # Manually reconstruct proposal from persisted Memory properties
-        obj = storage2._get(f"/api/graph/objects/{mem_uuid}")
-        props = obj.get("properties", {})
-        p_type = ProposalType(props["ch_proposal_type"])
-        p = Proposal(
-            id=proposal_id, type=p_type,
-            proposer=props.get("ch_proposal_proposer", ""),
-            rationale=props.get("ch_proposal_rationale", ""),
-            state=ProposalState(props.get("ch_proposal_state", "pending")),
-        )
-        if p_type == ProposalType.CREATE_KO:
-            p.ko_title = props.get("ch_proposal_ko_title", "")
-            tc_raw = props.get("ch_proposal_ko_truth_category", "")
-            if tc_raw:
-                p.ko_truth_category = TruthCategory(tc_raw)
+        assert proposal_id not in storage2._proposals
+        storage2._created_ids.add(mem_uuid)
 
-        storage2._proposals[p.id] = p
-
-        # Execute
+        # validate_and_execute MUST use its own Memory reload path:
+        #   _proposals.get() → None
+        #   _lookup_by_key() → scans _created_ids → finds mem_uuid
+        #   loads properties, restores ko_truth_category
+        #   executes CREATE_KO
         exec_result = storage2.validate_and_execute(proposal_id)
+
         assert exec_result.state.value == "accepted", exec_result.rejection_reason
+        assert exec_result.ko_truth_category == TruthCategory.VALIDATION_RESULT, \
+            f"truth_category not restored: {exec_result.ko_truth_category}"
+
         ko = storage2.get_ko(exec_result.created_ko_id)
         assert ko is not None
         assert ko.truth_category == TruthCategory.VALIDATION_RESULT, \
-            f"Cross-adapter: expected validation_result, got {ko.truth_category}"
+            f"KO truth_category: {ko.truth_category}"
+
+    def test_restart_restore_evidence_contradicts(self):
+        """submit CREATE_EVIDENCE/contradicts → new adapter → validate_and_execute
+        restores relation_type and creates CONTRADICTS edge."""
+        # Adapter 1: submit
+        storage1 = MemoryAdapter(
+            server_url=_server_url, api_key=_token, project_id=_project_id,
+        )
+
+        claim_id = f"live-claim-restart-ev-{_run_suffix}"
+        storage1.create_ko(KnowledgeObject(id=claim_id, type=KOType.HYPOTHESIS,
+                                          title="Claim for restart evidence test"))
+
+        result = handle_submit_proposal({"storage": storage1}, {
+            "proposal_type": "create_evidence",
+            "proposer": "integration-test",
+            "rationale": "Restart restore CREATE_EVIDENCE",
+            "evidence_claim_id": claim_id,
+            "evidence_observation": "Contradicts after restart.",
+            "evidence_relation_type": "contradicts",
+        })
+        proposal_id = result["proposal_id"]
+        assert "error" not in result, result
+
+        mem_uuid = find_proposal_mem_uuid(storage1, proposal_id)
+        assert mem_uuid is not None
+
+        # Adapter 2: fresh, empty cache, with proposal UUID
+        storage2 = MemoryAdapter(
+            server_url=_server_url, api_key=_token, project_id=_project_id,
+        )
+        assert proposal_id not in storage2._proposals
+        storage2._created_ids.add(mem_uuid)
+
+        # Also add the claim's UUID so _resolve_ch_id can find it
+        claim_mem = storage1._resolve_ch_id(claim_id)
+        storage2._ko_id_map[claim_id] = claim_mem
+        storage2._memory_id_map[claim_mem] = claim_id
+
+        exec_result = storage2.validate_and_execute(proposal_id)
+
+        assert exec_result.state.value == "accepted", exec_result.rejection_reason
+        assert exec_result.evidence_relation_type == "contradicts", \
+            f"relation_type not restored: {exec_result.evidence_relation_type}"
+        assert exec_result.evidence_claim_id == claim_id
+        assert exec_result.evidence_observation == "Contradicts after restart."
+
+        # Verify CONTRADICTS edge was created
+        assert exec_result.created_evidence_id
+        incoming = storage2.get_incoming_relations(claim_id, CONTRADICTION_INBOUND)
+        evidence_ch_ids = [src for src, rt in incoming]
+        assert exec_result.created_evidence_id in evidence_ch_ids, \
+            f"CONTRADICTS edge not created: incoming={evidence_ch_ids}"
 
 
 if __name__ == "__main__":
