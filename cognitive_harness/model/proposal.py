@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from cognitive_harness.model.ko import KOType, EpistemicStatus, ConfidenceLevel, RelationType
+from cognitive_harness.model.ko import KOType, EpistemicStatus, ConfidenceLevel, RelationType, TruthCategory
 from cognitive_harness.model.thread import Viewpoint
 
 
@@ -50,6 +50,7 @@ class Proposal:
     ko_type: KOType | None = None
     ko_title: str = ""
     ko_content: object | None = None
+    ko_truth_category: TruthCategory | None = None
     ko_viewpoints: list[str] = field(default_factory=list)
     ko_assumptions: list[str] = field(default_factory=list)
     ko_scope: str = ""
@@ -79,6 +80,7 @@ class Proposal:
     evidence_claim_id: str = ""
     evidence_observation: str = ""
     evidence_records: list[dict] = field(default_factory=list)
+    evidence_relation_type: str = "supports"  # "supports" or "contradicts"
 
     # SUPERSEDE fields
     successor_ko_id: str = ""       # must be a valid non-terminal KO

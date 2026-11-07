@@ -185,11 +185,17 @@ JUSTIFICATION_RELATIONS = frozenset({
     RelationType.TRANSFERRED_FROM,
 })
 
+# Relations that indicate contradiction (inbound to conclusion)
+CONTRADICTION_INBOUND = frozenset({
+    RelationType.CONTRADICTS,
+})
+
 IMPACT_RELATIONS = frozenset({
     RelationType.SUPPORTS,
     RelationType.DEPENDS_ON,
     RelationType.DERIVED_FROM,
     RelationType.VALIDATES,
+    RelationType.CONTRADICTS,
     RelationType.CONSTRAINS,
     RelationType.IMPACTS,
 })
