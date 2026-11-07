@@ -243,6 +243,7 @@ class MCPServer:
             # conditions; dropping them here left the caller with a bare verdict.
             "conditional_assumptions": result.conditional_assumptions,
             "cycles": result.cycles,
+            "contradicting_kos": result.contradicting_kos,
             "independence": {
                 "evidence_count": result.independence.evidence_count,
                 "independent_root_count": result.independence.independent_root_count,

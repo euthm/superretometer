@@ -213,12 +213,13 @@ class InMemoryStorage(StorageInterface):
 
     # ── Evidence ──────────────────────────────────────────────────────
 
-    def add_evidence(self, evidence_id, claim_id, status, observation, records, source_ko_id=None):
+    def add_evidence(self, evidence_id, claim_id, status, observation, records, source_ko_id=None, relation_type="supports"):
         """Attach evidence to a claim.
 
         source_ko_id (optional): the KO from which this evidence was
         derived.  When source_ko_id == claim_id the evidence is
         self-attesting.  When omitted, external source is assumed.
+        relation_type: "supports" or "contradicts".
         """
         ev = {
             "id": evidence_id,
@@ -226,6 +227,7 @@ class InMemoryStorage(StorageInterface):
             "status": status,
             "observation": observation,
             "records": records,
+            "relation_type": relation_type,
         }
         if source_ko_id is not None:
             ev["source_ko_id"] = source_ko_id
@@ -396,7 +398,7 @@ class InMemoryStorage(StorageInterface):
             p.rejection_reason = f"Claim KO {p.evidence_claim_id} not found"
             return
         eid = str(uuid.uuid4())
-        self.add_evidence(eid, p.evidence_claim_id, "pending", p.evidence_observation, p.evidence_records)
+        self.add_evidence(eid, p.evidence_claim_id, "pending", p.evidence_observation, p.evidence_records, relation_type=p.evidence_relation_type)
         p.created_evidence_id = eid
         p.state = ProposalState.ACCEPTED
 
