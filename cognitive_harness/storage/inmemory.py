@@ -297,7 +297,7 @@ class InMemoryStorage(StorageInterface):
             p.rejection_reason = "ko_title is required"
             return
         from cognitive_harness.model.ko import KnowledgeObject, KOType, ConfidenceLevel, JUSTIFICATION_RELATIONS
-        ko = KnowledgeObject(
+        ko_kwargs = dict(
             type=p.ko_type or KOType.HYPOTHESIS,
             title=p.ko_title,
             content=p.ko_content,
@@ -307,6 +307,9 @@ class InMemoryStorage(StorageInterface):
             confidence=p.ko_confidence,
             provenance=Provenance(source="proposal", author=p.proposer, independent=False),
         )
+        if p.ko_truth_category is not None:
+            ko_kwargs["truth_category"] = p.ko_truth_category
+        ko = KnowledgeObject(**ko_kwargs)
         self.create_ko(ko)
         p.created_ko_id = ko.id
         p.state = ProposalState.ACCEPTED
