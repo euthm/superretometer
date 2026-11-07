@@ -92,6 +92,7 @@ class AntiPattern(str, Enum):
     TAUTOLOGICAL_VALIDATION = "tautological_validation"
     INERT_PARAMETER = "inert_parameter"
     PHYSICALLY_UNREALIZABLE = "physically_unrealizable"
+    CONTRADICTED = "contradicted"
     UNSUPPORTED_TRANSFER = "unsupported_transfer"
     CIRCULAR_DEPENDENCY = "circular_dependency"
 

@@ -34,3 +34,6 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["cognitive_harness*", "transports*"]
+
+[tool.pytest.ini_options]
+markers = ["live_memory: opt-in tests that write to an explicitly selected Memory project"]

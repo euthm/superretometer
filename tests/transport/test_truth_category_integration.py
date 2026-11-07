@@ -15,54 +15,32 @@ import json, os, subprocess, sys, time, uuid, pytest
 
 from cognitive_harness.model.ko import KnowledgeObject, KOType, TruthCategory, JUSTIFICATION_INBOUND, CONTRADICTION_INBOUND
 from cognitive_harness.model.proposal import Proposal, ProposalType
-from memory_adapter import MemoryAdapter
-from runtime_server import handle_submit_proposal
+from transports.memory_adapter import MemoryAdapter
+from transports.runtime_server import handle_submit_proposal
 
-# ── Detect live Memory server ──────────────────────────────────────────────
-
-try:
-    import requests
-    _token = ""
-    try:
-        with open("/home/egiuth/.memory/config.yaml") as f:
-            import yaml
-            cfg = yaml.safe_load(f)
-            _token = cfg.get("api_key", "")
-    except Exception:
-        pass
-    if not _token:
-        _token = os.environ.get("MEMORY_API_KEY", "")
-
-    _server_url = "http://localhost:3002"
-    if _token:
-        _resp = requests.get(f"{_server_url}/api/graph/objects/count",
-                            headers={"Authorization": f"Bearer {_token}"}, timeout=5)
-        if _resp.status_code in (200, 401, 403):
-            HAS_MEMORY = True
-        else:
-            HAS_MEMORY = False
-    else:
-        HAS_MEMORY = False
-except Exception:
-    HAS_MEMORY = False
-
-_project_id = "229d3378-5eda-42ab-9bfa-133f6360cd34"
+# Live writes require explicit opt-in and an explicitly selected project/token.
+_token = os.environ.get("MEMORY_API_KEY", "")
+_server_url = os.environ.get("MEMORY_SERVER_URL", "http://localhost:3002")
+_project_id = os.environ.get("MEMORY_PROJECT_ID", "")
+HAS_MEMORY = (os.environ.get("MEMORY_LIVE_TESTS") == "1"
+              and bool(_token) and bool(_project_id))
 _run_suffix = str(uuid.uuid4())[:8]
 _repo_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def _subprocess_script(script_file: str) -> dict:
-    """Run a Python script in a fresh subprocess (no shared state)."""
+def _subprocess_phase(phase: str, data: dict) -> dict:
+    """Run checkout code in a fresh process; secrets never enter script files."""
+    env = os.environ.copy()
+    env.update(MEMORY_API_KEY=_token, MEMORY_SERVER_URL=_server_url,
+               MEMORY_PROJECT_ID=_project_id, PYTHONPATH=_repo_dir)
     result = subprocess.run(
-        [sys.executable, script_file],
+        [sys.executable, "-m", "tests.transport.memory_restart_worker", phase],
+        input=json.dumps(data), cwd=_repo_dir, env=env,
         capture_output=True, text=True, timeout=60,
     )
     if result.returncode != 0:
         pytest.fail(f"Subprocess failed: {result.stderr}\n{result.stdout}")
-    out = result.stdout.strip()
-    if out:
-        return json.loads(out)
-    return {}
+    return json.loads(result.stdout)
 
 
 @pytest.mark.live_memory
@@ -175,186 +153,21 @@ class TestProposalPersistenceLive:
         assert exec_result.created_evidence_id
 
     def test_process_restart_create_ko_truth_category(self):
-        """CREATE_KO with truth_category survives actual process restart.
-
-        Phase 1 (subprocess): submit pending CREATE_KO proposal, wait for indexing.
-        Phase 2 (subprocess): fresh process, empty cache — validate_and_execute
-        finds proposal via _lookup_by_key (search), restores truth_category, executes.
-        """
-        suffix = str(uuid.uuid4())[:8]
-
-        phase1_script = os.path.join(os.path.dirname(__file__),
-                                     "_restart_phase1_ko.py")
-        tmp_file = f"/tmp/sr_restart_ko_{suffix}.json"
-        with open(phase1_script, "w") as f:
-            f.write(f'''
-import sys, uuid, json, time
-sys.path.insert(0, {repr(_repo_dir)})
-sys.path.insert(0, "/home/egiuth/.local/share/superretometer-runtime")
-from memory_adapter import MemoryAdapter
-from runtime_server import handle_submit_proposal
-storage = MemoryAdapter(
-    server_url="{_server_url}", api_key="{_token}",
-    project_id="{_project_id}",
-)
-result = handle_submit_proposal({{"storage": storage}}, {{
-    "proposal_type": "create_ko",
-    "proposer": "restart-test",
-    "rationale": f"Process restart KO test {{'{suffix}'}}",
-    "ko_title": f"Restart-KO-{suffix}",
-    "ko_truth_category": "sourced_material_data",
-}})
-proposal_id = result["proposal_id"]
-# Wait for search indexing with retries
-for attempt in range(10):
-    mem_uuid = storage._lookup_by_key(f"ch:proposal:{{proposal_id}}")
-    if mem_uuid:
-        break
-    time.sleep(1)
-else:
-    raise RuntimeError("Proposal not indexable after 10s")
-with open({repr(tmp_file)}, "w") as out:
-    json.dump({{"proposal_id": proposal_id}}, out)
-print(json.dumps({{"proposal_id": proposal_id}}))
-''')
-        try:
-            data1 = _subprocess_script(phase1_script)
-
-            phase2_script = os.path.join(os.path.dirname(__file__),
-                                         "_restart_phase2_ko.py")
-            with open(phase2_script, "w") as f:
-                f.write(f'''
-import sys, json
-sys.path.insert(0, {repr(_repo_dir)})
-sys.path.insert(0, "/home/egiuth/.local/share/superretometer-runtime")
-from memory_adapter import MemoryAdapter
-from cognitive_harness.model.ko import TruthCategory
-with open({repr(tmp_file)}) as f:
-    data = json.load(f)
-storage = MemoryAdapter(
-    server_url="{_server_url}", api_key="{_token}",
-    project_id="{_project_id}",
-)
-assert len(storage._proposals) == 0
-assert len(storage._ko_id_map) == 0
-assert len(storage._created_ids) == 0
-exec_result = storage.validate_and_execute(data["proposal_id"])
-ko = storage.get_ko(exec_result.created_ko_id)
-result = {{
-    "state": exec_result.state.value,
-    "ko_truth_category": str(exec_result.ko_truth_category),
-    "ko_graph_category": str(ko.truth_category) if ko else None,
-    "created_ko_id": exec_result.created_ko_id,
-    "error": exec_result.rejection_reason,
-}}
-print(json.dumps(result))
-''')
-            data2 = _subprocess_script(phase2_script)
-
-            assert data2["state"] == "accepted", f"Rejected: {data2['error']}"
-            assert "SOURCED_MATERIAL_DATA" in data2["ko_truth_category"], \
-                f"truth_category not restored: {data2['ko_truth_category']}"
-            assert "SOURCED_MATERIAL_DATA" in data2["ko_graph_category"], \
-                f"KO in graph missing truth_category: {data2['ko_graph_category']}"
-        finally:
-            for f in (phase1_script, phase2_script):
-                try: os.unlink(f)
-                except OSError: pass
+        """Submit and execute in separate processes using checkout modules only."""
+        submitted = _subprocess_phase("submit_ko", {})
+        restored = _subprocess_phase("execute_ko", submitted)
+        assert restored["state"] == "accepted", restored
+        assert restored["type"] == "observation"
+        assert restored["scope"] == "restart-test-boundary"
+        assert restored["truth_category"] == "sourced_material_data"
 
     def test_process_restart_evidence_contradicts(self):
-        """CREATE_EVIDENCE with contradicts survives actual process restart.
-
-        Phase 1 (subprocess): create claim, submit pending CREATE_EVIDENCE/contradicts,
-        wait until proposal is searchable.
-        Phase 2 (subprocess): fresh process, empty cache — validate_and_execute
-        finds proposal via _lookup_by_key, resolves claim_id via _resolve_ch_id
-        (search), restores relation_type, creates CONTRADICTS edge.
-        """
-        suffix = str(uuid.uuid4())[:8]
-
-        phase1_script = os.path.join(os.path.dirname(__file__),
-                                     "_restart_phase1_ev.py")
-        tmp_file = f"/tmp/sr_restart_ev_{suffix}.json"
-        with open(phase1_script, "w") as f:
-            f.write(f'''
-import sys, uuid, json, time
-sys.path.insert(0, {repr(_repo_dir)})
-sys.path.insert(0, "/home/egiuth/.local/share/superretometer-runtime")
-from memory_adapter import MemoryAdapter
-from runtime_server import handle_submit_proposal
-from cognitive_harness.model.ko import KnowledgeObject, KOType
-storage = MemoryAdapter(
-    server_url="{_server_url}", api_key="{_token}",
-    project_id="{_project_id}",
-)
-ko = KnowledgeObject(type=KOType.HYPOTHESIS, title=f"Restart-Ev-Claim-{suffix}")
-storage.create_ko(ko)
-claim_id = ko.id
-result = handle_submit_proposal({{"storage": storage}}, {{
-    "proposal_type": "create_evidence",
-    "proposer": "restart-test",
-    "rationale": f"Process restart evidence test {{'{suffix}'}}",
-    "evidence_claim_id": claim_id,
-    "evidence_observation": f"Contradicts after restart {{'{suffix}'}}",
-    "evidence_relation_type": "contradicts",
-}})
-proposal_id = result["proposal_id"]
-# Wait for search indexing with retries
-for attempt in range(10):
-    mem_uuid = storage._lookup_by_key(f"ch:proposal:{{proposal_id}}")
-    if mem_uuid:
-        break
-    time.sleep(1)
-else:
-    raise RuntimeError("Proposal not indexable after 10s")
-with open({repr(tmp_file)}, "w") as out:
-    json.dump({{"proposal_id": proposal_id, "claim_id": claim_id}}, out)
-print(json.dumps({{"proposal_id": proposal_id, "claim_id": claim_id}}))
-''')
-        try:
-            data1 = _subprocess_script(phase1_script)
-
-            phase2_script = os.path.join(os.path.dirname(__file__),
-                                         "_restart_phase2_ev.py")
-            with open(phase2_script, "w") as f:
-                f.write(f'''
-import sys, json
-sys.path.insert(0, {repr(_repo_dir)})
-sys.path.insert(0, "/home/egiuth/.local/share/superretometer-runtime")
-from memory_adapter import MemoryAdapter
-from cognitive_harness.model.ko import CONTRADICTION_INBOUND
-with open({repr(tmp_file)}) as f:
-    data = json.load(f)
-storage = MemoryAdapter(
-    server_url="{_server_url}", api_key="{_token}",
-    project_id="{_project_id}",
-)
-assert len(storage._proposals) == 0
-assert len(storage._ko_id_map) == 0
-exec_result = storage.validate_and_execute(data["proposal_id"])
-incoming = storage.get_incoming_relations(data["claim_id"], CONTRADICTION_INBOUND)
-ev_ch_ids = [src for src, rt in incoming]
-result = {{
-    "state": exec_result.state.value,
-    "evidence_relation_type": exec_result.evidence_relation_type,
-    "created_evidence_id": exec_result.created_evidence_id,
-    "contradicts_edge_found": exec_result.created_evidence_id in ev_ch_ids if exec_result.created_evidence_id else False,
-    "error": exec_result.rejection_reason,
-}}
-print(json.dumps(result))
-''')
-            data2 = _subprocess_script(phase2_script)
-
-            assert data2["state"] == "accepted", f"Rejected: {data2['error']}"
-            assert data2["evidence_relation_type"] == "contradicts", \
-                f"relation_type not restored: {data2['evidence_relation_type']}"
-            assert data2["contradicts_edge_found"], \
-                "CONTRADICTS edge not created after process restart"
-        finally:
-            for f in (phase1_script, phase2_script):
-                try: os.unlink(f)
-                except OSError: pass
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+        """A third process reads the evidence without inheriting either cache."""
+        submitted = _subprocess_phase("submit_evidence", {})
+        executed = _subprocess_phase("execute_evidence", submitted)
+        assert executed["state"] == "accepted", executed
+        restored = _subprocess_phase("read_evidence", executed)
+        assert restored["claim_id"] == submitted["claim_id"]
+        assert restored["relation_type"] == "contradicts"
+        assert restored["edge_found"]
+        assert restored["listed"]

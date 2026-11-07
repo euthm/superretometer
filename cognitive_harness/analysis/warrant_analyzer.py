@@ -195,7 +195,9 @@ class WarrantAnalyzer:
                 label = f"{cid}: {cko.title}" if cko else cid
                 result.anti_pattern_diagnoses.append(
                     AntiPatternDiagnosis(
-                        pattern=AntiPattern.PHYSICALLY_UNREALIZABLE,
+                        pattern=(AntiPattern.PHYSICALLY_UNREALIZABLE
+                                 if cko and cko.truth_category == TruthCategory.CONSERVATION_LAW
+                                 else AntiPattern.CONTRADICTED),
                         offending_ko_ids=[cid],
                         violated_condition=f"Contradicted by {label}"
                     )
