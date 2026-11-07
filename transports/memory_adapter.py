@@ -1104,22 +1104,30 @@ class MemoryAdapter(StorageInterface):
     # ── Evidence ──────────────────────────────────────────────────────
 
     def add_evidence(self, evidence_id: str, claim_id: str, status: str,
-                     observation: str, records: list[dict]) -> str:
+                     observation: str, records: list[dict],
+                     source_ko_id: str | None = None,
+                     relation_type: str = "supports") -> str:
         ev = {
             "id": evidence_id,
             "claim_id": claim_id,
             "status": status,
             "observation": observation,
             "records": records,
+            "relation_type": relation_type,
         }
         self._evidence[evidence_id] = ev
 
-        # Create evidence as a Memory object with SUPPORTS relation to claim
+        # Determine edge type from relation_type
+        edge_type = RelationType.SUPPORTS.value
+        if relation_type == "contradicts":
+            edge_type = RelationType.CONTRADICTS.value
+
+        # Create evidence as a Memory object
         ev_ko = KnowledgeObject(
             id=evidence_id,
             type=KOType.EVIDENCE_ITEM,
             title=f"Evidence for {claim_id}",
-            content={"status": status, "observation": observation, "records": records},
+            content={"status": status, "observation": observation, "records": records, "relation_type": relation_type},
             provenance=Provenance(source="evidence", author="system"),
         )
         mem_obj = ko_to_memory_object(ev_ko)
@@ -1127,8 +1135,10 @@ class MemoryAdapter(StorageInterface):
         self._post("/api/graph/objects", mem_obj)
         self._created_ids.add(evidence_id)
 
-        # Link to claim via SUPPORTS relation
-        self._create_edge(evidence_id, claim_id, RelationType.SUPPORTS.value)
+        # Link to claim via edge — must use Memory UUIDs
+        ev_uuid = evidence_id  # evidence KO was created with this ID
+        claim_uuid = self._resolve_ch_id(claim_id)
+        self._create_edge(ev_uuid, claim_uuid, edge_type)
 
         # Update claim's evidence_ids
         claim = self.get_ko(claim_id)
@@ -1136,6 +1146,14 @@ class MemoryAdapter(StorageInterface):
             self.update_ko(claim_id, {"evidence_ids": claim.evidence_ids + [evidence_id]})
 
         return evidence_id
+
+    def delete_ko(self, ko_id: str) -> None:
+        """Soft-delete a KO via Memory's delete endpoint."""
+        mem_uuid = self._resolve_ch_id(ko_id)
+        self._delete(f"/api/graph/objects/{mem_uuid}")
+        self._created_ids.discard(mem_uuid)
+        self._ko_id_map.pop(ko_id, None)
+        self._memory_id_map.pop(mem_uuid, None)
 
     def get_evidence(self, evidence_id: str) -> dict | None:
         if evidence_id in self._evidence:
@@ -1333,7 +1351,7 @@ class MemoryAdapter(StorageInterface):
                 ko_type = p.ko_type or KOType.REQUIREMENT
                 if hasattr(ko_type, 'value'):
                     ko_type = KOType(ko_type)
-                ko = KnowledgeObject(
+                ko_kwargs = dict(
                     type=ko_type,
                     title=p.ko_title,
                     content=p.ko_content,
@@ -1341,6 +1359,9 @@ class MemoryAdapter(StorageInterface):
                     assumptions=p.ko_assumptions,
                     confidence=p.ko_confidence,
                 )
+                if p.ko_truth_category is not None:
+                    ko_kwargs["truth_category"] = p.ko_truth_category
+                ko = KnowledgeObject(**ko_kwargs)
                 if p.ko_viewpoints:
                     ko.viewpoint_ids = p.ko_viewpoints
                 mem_uuid = self.create_ko(ko)
