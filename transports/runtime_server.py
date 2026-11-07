@@ -425,7 +425,7 @@ def handle_adopt_existing_ko(components: dict, args: dict) -> dict:
 def handle_submit_proposal(components: dict, args: dict) -> dict:
     """Submit a structured proposal."""
     from cognitive_harness.model.proposal import Proposal, ProposalType
-    from cognitive_harness.model.ko import KOType, EpistemicStatus
+    from cognitive_harness.model.ko import KOType, EpistemicStatus, TruthCategory
 
     storage = components["storage"]
 
@@ -455,6 +455,12 @@ def handle_submit_proposal(components: dict, args: dict) -> dict:
                 proposal.ko_content = json.loads(content)
             except (json.JSONDecodeError, TypeError):
                 proposal.ko_content = content
+        tc_val = args.get("ko_truth_category")
+        if tc_val:
+            try:
+                proposal.ko_truth_category = TruthCategory(tc_val)
+            except ValueError:
+                return {"error": f"Invalid truth_category: {tc_val!r}. Valid: {[c.value for c in TruthCategory]}"}
 
     elif p_type in (ProposalType.UPDATE_KO, ProposalType.TRANSITION_STATUS):
         proposal.target_ko_id = args.get("target_ko_id", "")
@@ -475,6 +481,7 @@ def handle_submit_proposal(components: dict, args: dict) -> dict:
     elif p_type == ProposalType.CREATE_EVIDENCE:
         proposal.evidence_claim_id = args.get("evidence_claim_id", "")
         proposal.evidence_observation = args.get("evidence_observation", "")
+        proposal.evidence_relation_type = args.get("evidence_relation_type", "supports")
 
     proposal_id = storage.submit_proposal(proposal)
     return {"proposal_id": proposal_id, "state": proposal.state.value}
@@ -603,12 +610,14 @@ TOOLS_METADATA = {
                 "rationale": {"type": "string", "description": "Why this change is needed"},
                 "ko_title": {"type": "string", "description": "KO title (for create_ko)"},
                 "ko_type": {"type": "string", "description": "KOType (for create_ko)"},
+                "ko_truth_category": {"type": "string", "description": "TruthCategory for create_ko: physical_observation, sourced_material_data, conservation_law, documented_decision, assumption, fitted_parameter, model_derived, validation_result, mathematical_identity. Optional — defaults to assumption."},
                 "ko_content": {"type": "string", "description": "KO content as JSON string (for create_ko)"},
                 "target_ko_id": {"type": "string", "description": "Target KO ID (for update/transition)"},
                 "target_status": {"type": "string", "description": "Target EpistemicStatus (for transition)"},
                 "updates": {"type": "string", "description": "Updates as JSON string (for update_ko)"},
                 "evidence_claim_id": {"type": "string", "description": "Claim ID (for create_evidence)"},
                 "evidence_observation": {"type": "string", "description": "Observation (for create_evidence)"},
+                "evidence_relation_type": {"type": "string", "description": "Relation type for evidence: supports (default) or contradicts"},
             },
             "required": ["proposal_type", "proposer", "rationale"],
         },
