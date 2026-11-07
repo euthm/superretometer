@@ -16,7 +16,7 @@ from cognitive_harness.model.ko import (
     KnowledgeObject, EpistemicStatus, TruthCategory, WarrantStatus,
     AntiPattern, RelationType, JUSTIFICATION_RELATIONS, Dataset,
     DerivationType, AntiPatternDiagnosis,
-    JUSTIFICATION_INBOUND, JUSTIFICATION_OUTBOUND,
+    JUSTIFICATION_INBOUND, JUSTIFICATION_OUTBOUND, CONTRADICTION_INBOUND,
 )
 from cognitive_harness.storage.interface import StorageInterface
 from cognitive_harness.exceptions import IncompleteEnumerationError
@@ -44,6 +44,7 @@ class WarrantResult:
     anti_pattern_diagnoses: list[AntiPatternDiagnosis] = field(default_factory=list)
     conditional_assumptions: list[str] = field(default_factory=list)
     justification_path: list[str] = field(default_factory=list)
+    contradicting_kos: list[str] = field(default_factory=list)
     # Independence analysis
     independence: IndependenceResult | None = None
     # Cycles found
@@ -77,6 +78,10 @@ class WarrantAnalyzer:
         # 2. Structural anti-pattern detection
         diagnoses = self._detect_structural_anti_patterns(conclusion_ko_id, path)
         result.anti_pattern_diagnoses = diagnoses
+
+        # 2b. Check for incoming contradictions
+        contradicting = self._find_contradictions(conclusion_ko_id)
+        result.contradicting_kos = contradicting
 
         # 3. Independence analysis for supporting evidence
         indep = self._analyze_independence(path, exclude_ids={conclusion_ko_id})
@@ -181,7 +186,24 @@ class WarrantAnalyzer:
         # Missing premises (KO referenced but not in storage) are structural defects
         has_missing_premises = len(missing_premises) > 0
 
-        if has_structural_defect or has_cycles or has_missing_premises:
+        # Contradictions override all other warrant assessments
+        has_contradictions = len(contradicting) > 0
+        if has_contradictions:
+            result.warrant_status = WarrantStatus.UNWARRANTED
+            for cid in contradicting:
+                cko = self.storage.get_ko(cid)
+                label = f"{cid}: {cko.title}" if cko else cid
+                result.anti_pattern_diagnoses.append(
+                    AntiPatternDiagnosis(
+                        pattern=(AntiPattern.PHYSICALLY_UNREALIZABLE
+                                 if cko and cko.truth_category == TruthCategory.CONSERVATION_LAW
+                                 else AntiPattern.CONTRADICTED),
+                        offending_ko_ids=[cid],
+                        violated_condition=f"Contradicted by {label}"
+                    )
+                )
+
+        if has_structural_defect or has_cycles or has_missing_premises or has_contradictions:
             result.warrant_status = WarrantStatus.UNWARRANTED
             if has_missing_premises:
                 for mid in missing_premises:
@@ -326,6 +348,11 @@ class WarrantAnalyzer:
                         queue.append(up_id)
 
         return path, self._find_cycles_in_path(path)
+
+    def _find_contradictions(self, ko_id: str) -> list[str]:
+        """Find KOs that CONTRADICT this KO via incoming CONTRADICTS edges."""
+        incoming = self.storage.get_incoming_relations(ko_id, CONTRADICTION_INBOUND)
+        return [from_id for from_id, rel_type in incoming]
 
     # ── Structural anti-pattern detection ───────────────────────────────
 

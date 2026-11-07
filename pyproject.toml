@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cognitive-harness"
-version = "0.7.0"
+version = "0.7.1"
 description = "Structured engineering reasoning, provenance, epistemic warrant, and change-impact analysis over a knowledge graph"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -29,7 +29,11 @@ superretometer = "cognitive_harness.cli:main"
 mcp = []
 dev = [
     "pytest>=7.0",
+    "requests>=2.28",
 ]
 
 [tool.setuptools.packages.find]
 include = ["cognitive_harness*", "transports*"]
+
+[tool.pytest.ini_options]
+markers = ["live_memory: opt-in tests that write to an explicitly selected Memory project"]

@@ -30,6 +30,7 @@ from cognitive_harness.reasoning.rule_engine import RuleEngineReasoner
 from cognitive_harness.orchestration.engine import OrchestrationEngine
 from cognitive_harness.analysis.warrant_analyzer import WarrantAnalyzer
 from cognitive_harness.consumer.api import ConsumerAPI
+from cognitive_harness.mcp.protocol import tool_result
 
 
 # ── Tool definitions ─────────────────────────────────────────────────
@@ -211,7 +212,7 @@ class MCPServer:
 
         try:
             result = handler(arguments)
-            self._respond({"id": rid, "result": result})
+            self._respond({"id": rid, "result": tool_result(result)})
         except Exception as e:
             self._respond({"id": rid, "error": {"code": -32603, "message": str(e)}})
 
@@ -242,6 +243,7 @@ class MCPServer:
             # conditions; dropping them here left the caller with a bare verdict.
             "conditional_assumptions": result.conditional_assumptions,
             "cycles": result.cycles,
+            "contradicting_kos": result.contradicting_kos,
             "independence": {
                 "evidence_count": result.independence.evidence_count,
                 "independent_root_count": result.independence.independent_root_count,
