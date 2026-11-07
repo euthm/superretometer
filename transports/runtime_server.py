@@ -109,10 +109,10 @@ def startup() -> dict:
     # Pin canonical version — fail closed if wrong version loaded
     from importlib.metadata import version as pkg_version
     canonical_version = pkg_version("cognitive-harness")
-    if canonical_version not in ("0.6.4", "0.7.0"):
+    if canonical_version not in ("0.6.4", "0.7.0", "0.7.1"):
         raise RuntimeError(
             f"Refusing to start: cognitive-harness {canonical_version} loaded, "
-            f"expected 0.6.4 or 0.7.0. Check PYTHONPATH / installed packages for stale versions."
+            f"expected 0.6.4, 0.7.0, or 0.7.1. Check PYTHONPATH / installed packages for stale versions."
         )
 
     # Log to stderr — never stdout

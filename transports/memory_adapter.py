@@ -492,16 +492,24 @@ class MemoryAdapter(StorageInterface):
 
         Returns canonical_id (stable across versions), not version-specific id.
         """
-        resp = self._post("/api/graph/search", {
-            "query": key,
-            "projectId": self.project_id,
-            "limit": 200,
-            "offset": 0,
-        })
-        matches = [
-            item["object"] for item in resp.get("data", [])
-            if item.get("object", {}).get("key") == key
-        ]
+        # Paginate search until exact key match or exhausted
+        matches = []
+        for offset in range(0, 2000, 200):
+            resp = self._post("/api/graph/search", {
+                "query": key,
+                "projectId": self.project_id,
+                "limit": 200,
+                "offset": offset,
+            })
+            page_matches = [
+                item["object"] for item in resp.get("data", [])
+                if item.get("object", {}).get("key") == key
+            ]
+            if page_matches:
+                matches = page_matches
+                break
+            if len(resp.get("data", [])) == 0:
+                break  # No more results
         if len(matches) == 0:
             # Fallback 1: scan _created_ids for matching key (covers indexing delay)
             for cid in self._created_ids:
@@ -511,9 +519,15 @@ class MemoryAdapter(StorageInterface):
                         return obj.get("canonical_id", obj.get("id"))
                 except (requests.HTTPError, KeyError):
                     continue
-            # Fallback 2: for ch:ko:{uuid} keys, try direct UUID fetch
+            # Fallback 2: for ch:ko:{uuid} / ch:proposal:{uuid} keys, try direct UUID fetch
             if key.startswith("ch:ko:"):
-                ch_id = key[6:]
+                prefix_len = 6
+            elif key.startswith("ch:proposal:"):
+                prefix_len = 12
+            else:
+                prefix_len = None
+            if prefix_len is not None:
+                ch_id = key[prefix_len:]
                 try:
                     uuid.UUID(ch_id)
                     obj = self._get(f"/api/graph/objects/{ch_id}")

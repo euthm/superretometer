@@ -1,12 +1,17 @@
 # FILE: tests/transport/test_truth_category_integration.py
 """Integration tests requiring live Memory server.
 
-Tests UUID mismatch, edge failure, and proposal persistence via validate_and_execute's
-own reload path.  Restart is simulated by creating a fresh adapter whose
-_created_ids includes the proposal's Memory UUID (as a session-metadata service
-would provide after reconnection).
+Tests UUID mismatch, edge failure, and proposal persistence across process restart.
+
+Process restart is tested via subprocess: Phase 1 submits proposals, Phase 2
+is a fresh Python process that finds and executes them through _lookup_by_key
+alone — no _created_ids, _ko_id_map, or _memory_id_map transfer.
+
+If a session-metadata service persists identifiers across restarts, it would
+be documented and used here. Currently no such service exists; _lookup_by_key
+(search → direct UUID fallback → _created_ids scan) is the sole mechanism.
 """
-import os, uuid, pytest
+import json, os, subprocess, sys, time, uuid, pytest
 
 from cognitive_harness.model.ko import KnowledgeObject, KOType, TruthCategory, JUSTIFICATION_INBOUND, CONTRADICTION_INBOUND
 from cognitive_harness.model.proposal import Proposal, ProposalType
@@ -43,19 +48,21 @@ except Exception:
 
 _project_id = "229d3378-5eda-42ab-9bfa-133f6360cd34"
 _run_suffix = str(uuid.uuid4())[:8]
+_repo_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def find_proposal_mem_uuid(storage, proposal_id):
-    """Find a proposal's Memory UUID by scanning created_ids."""
-    target_key = f"ch:proposal:{proposal_id}"
-    for cid in storage._created_ids:
-        try:
-            obj = storage._get(f"/api/graph/objects/{cid}")
-            if obj.get("key") == target_key:
-                return cid
-        except Exception:
-            continue
-    return None
+def _subprocess_script(script_file: str) -> dict:
+    """Run a Python script in a fresh subprocess (no shared state)."""
+    result = subprocess.run(
+        [sys.executable, script_file],
+        capture_output=True, text=True, timeout=60,
+    )
+    if result.returncode != 0:
+        pytest.fail(f"Subprocess failed: {result.stderr}\n{result.stdout}")
+    out = result.stdout.strip()
+    if out:
+        return json.loads(out)
+    return {}
 
 
 @pytest.mark.live_memory
@@ -124,9 +131,8 @@ class TestProposalPersistenceLive:
         assert "error" not in result, result
         proposal_id = result["proposal_id"]
 
-        mem_uuid = find_proposal_mem_uuid(storage, proposal_id)
+        mem_uuid = storage._lookup_by_key(f"ch:proposal:{proposal_id}")
         assert mem_uuid is not None
-
         obj = storage._get(f"/api/graph/objects/{mem_uuid}")
         props = obj.get("properties", {})
         assert props.get("ch_proposal_ko_truth_category") == "sourced_material_data"
@@ -157,9 +163,8 @@ class TestProposalPersistenceLive:
         assert "error" not in result, result
         proposal_id = result["proposal_id"]
 
-        mem_uuid = find_proposal_mem_uuid(storage, proposal_id)
+        mem_uuid = storage._lookup_by_key(f"ch:proposal:{proposal_id}")
         assert mem_uuid is not None
-
         obj = storage._get(f"/api/graph/objects/{mem_uuid}")
         props = obj.get("properties", {})
         assert props.get("ch_proposal_evidence_relation_type") == "contradicts"
@@ -169,104 +174,186 @@ class TestProposalPersistenceLive:
         assert exec_result.state.value == "accepted", exec_result.rejection_reason
         assert exec_result.created_evidence_id
 
-    def test_restart_restore_create_ko_truth_category(self):
-        """submit CREATE_KO → new adapter with empty cache → validate_and_execute
-        reloads from Memory (via _lookup_by_key _created_ids fallback) → category preserved."""
-        # Adapter 1: submit
-        storage1 = MemoryAdapter(
-            server_url=_server_url, api_key=_token, project_id=_project_id,
-        )
+    def test_process_restart_create_ko_truth_category(self):
+        """CREATE_KO with truth_category survives actual process restart.
 
-        result = handle_submit_proposal({"storage": storage1}, {
-            "proposal_type": "create_ko",
-            "proposer": "integration-test",
-            "rationale": "Restart restore CREATE_KO",
-            "ko_title": f"Restart KO {_run_suffix}",
-            "ko_truth_category": "validation_result",
-        })
-        proposal_id = result["proposal_id"]
-        assert "error" not in result, result
+        Phase 1 (subprocess): submit pending CREATE_KO proposal, wait for indexing.
+        Phase 2 (subprocess): fresh process, empty cache — validate_and_execute
+        finds proposal via _lookup_by_key (search), restores truth_category, executes.
+        """
+        suffix = str(uuid.uuid4())[:8]
 
-        mem_uuid = find_proposal_mem_uuid(storage1, proposal_id)
-        assert mem_uuid is not None
+        phase1_script = os.path.join(os.path.dirname(__file__),
+                                     "_restart_phase1_ko.py")
+        tmp_file = f"/tmp/sr_restart_ko_{suffix}.json"
+        with open(phase1_script, "w") as f:
+            f.write(f'''
+import sys, uuid, json, time
+sys.path.insert(0, {repr(_repo_dir)})
+sys.path.insert(0, "/home/egiuth/.local/share/superretometer-runtime")
+from memory_adapter import MemoryAdapter
+from runtime_server import handle_submit_proposal
+storage = MemoryAdapter(
+    server_url="{_server_url}", api_key="{_token}",
+    project_id="{_project_id}",
+)
+result = handle_submit_proposal({{"storage": storage}}, {{
+    "proposal_type": "create_ko",
+    "proposer": "restart-test",
+    "rationale": f"Process restart KO test {{'{suffix}'}}",
+    "ko_title": f"Restart-KO-{suffix}",
+    "ko_truth_category": "sourced_material_data",
+}})
+proposal_id = result["proposal_id"]
+# Wait for search indexing with retries
+for attempt in range(10):
+    mem_uuid = storage._lookup_by_key(f"ch:proposal:{{proposal_id}}")
+    if mem_uuid:
+        break
+    time.sleep(1)
+else:
+    raise RuntimeError("Proposal not indexable after 10s")
+with open({repr(tmp_file)}, "w") as out:
+    json.dump({{"proposal_id": proposal_id}}, out)
+print(json.dumps({{"proposal_id": proposal_id}}))
+''')
+        try:
+            data1 = _subprocess_script(phase1_script)
 
-        # Adapter 2: fresh, empty cache.
-        # Add mem_uuid to _created_ids to simulate session-metadata reconnection
-        # (the real session service would supply this list after reconnect).
-        storage2 = MemoryAdapter(
-            server_url=_server_url, api_key=_token, project_id=_project_id,
-        )
-        assert proposal_id not in storage2._proposals
-        storage2._created_ids.add(mem_uuid)
+            phase2_script = os.path.join(os.path.dirname(__file__),
+                                         "_restart_phase2_ko.py")
+            with open(phase2_script, "w") as f:
+                f.write(f'''
+import sys, json
+sys.path.insert(0, {repr(_repo_dir)})
+sys.path.insert(0, "/home/egiuth/.local/share/superretometer-runtime")
+from memory_adapter import MemoryAdapter
+from cognitive_harness.model.ko import TruthCategory
+with open({repr(tmp_file)}) as f:
+    data = json.load(f)
+storage = MemoryAdapter(
+    server_url="{_server_url}", api_key="{_token}",
+    project_id="{_project_id}",
+)
+assert len(storage._proposals) == 0
+assert len(storage._ko_id_map) == 0
+assert len(storage._created_ids) == 0
+exec_result = storage.validate_and_execute(data["proposal_id"])
+ko = storage.get_ko(exec_result.created_ko_id)
+result = {{
+    "state": exec_result.state.value,
+    "ko_truth_category": str(exec_result.ko_truth_category),
+    "ko_graph_category": str(ko.truth_category) if ko else None,
+    "created_ko_id": exec_result.created_ko_id,
+    "error": exec_result.rejection_reason,
+}}
+print(json.dumps(result))
+''')
+            data2 = _subprocess_script(phase2_script)
 
-        # validate_and_execute MUST use its own Memory reload path:
-        #   _proposals.get() → None
-        #   _lookup_by_key() → scans _created_ids → finds mem_uuid
-        #   loads properties, restores ko_truth_category
-        #   executes CREATE_KO
-        exec_result = storage2.validate_and_execute(proposal_id)
+            assert data2["state"] == "accepted", f"Rejected: {data2['error']}"
+            assert "SOURCED_MATERIAL_DATA" in data2["ko_truth_category"], \
+                f"truth_category not restored: {data2['ko_truth_category']}"
+            assert "SOURCED_MATERIAL_DATA" in data2["ko_graph_category"], \
+                f"KO in graph missing truth_category: {data2['ko_graph_category']}"
+        finally:
+            for f in (phase1_script, phase2_script):
+                try: os.unlink(f)
+                except OSError: pass
 
-        assert exec_result.state.value == "accepted", exec_result.rejection_reason
-        assert exec_result.ko_truth_category == TruthCategory.VALIDATION_RESULT, \
-            f"truth_category not restored: {exec_result.ko_truth_category}"
+    def test_process_restart_evidence_contradicts(self):
+        """CREATE_EVIDENCE with contradicts survives actual process restart.
 
-        ko = storage2.get_ko(exec_result.created_ko_id)
-        assert ko is not None
-        assert ko.truth_category == TruthCategory.VALIDATION_RESULT, \
-            f"KO truth_category: {ko.truth_category}"
+        Phase 1 (subprocess): create claim, submit pending CREATE_EVIDENCE/contradicts,
+        wait until proposal is searchable.
+        Phase 2 (subprocess): fresh process, empty cache — validate_and_execute
+        finds proposal via _lookup_by_key, resolves claim_id via _resolve_ch_id
+        (search), restores relation_type, creates CONTRADICTS edge.
+        """
+        suffix = str(uuid.uuid4())[:8]
 
-    def test_restart_restore_evidence_contradicts(self):
-        """submit CREATE_EVIDENCE/contradicts → new adapter → validate_and_execute
-        restores relation_type and creates CONTRADICTS edge."""
-        # Adapter 1: submit
-        storage1 = MemoryAdapter(
-            server_url=_server_url, api_key=_token, project_id=_project_id,
-        )
+        phase1_script = os.path.join(os.path.dirname(__file__),
+                                     "_restart_phase1_ev.py")
+        tmp_file = f"/tmp/sr_restart_ev_{suffix}.json"
+        with open(phase1_script, "w") as f:
+            f.write(f'''
+import sys, uuid, json, time
+sys.path.insert(0, {repr(_repo_dir)})
+sys.path.insert(0, "/home/egiuth/.local/share/superretometer-runtime")
+from memory_adapter import MemoryAdapter
+from runtime_server import handle_submit_proposal
+from cognitive_harness.model.ko import KnowledgeObject, KOType
+storage = MemoryAdapter(
+    server_url="{_server_url}", api_key="{_token}",
+    project_id="{_project_id}",
+)
+ko = KnowledgeObject(type=KOType.HYPOTHESIS, title=f"Restart-Ev-Claim-{suffix}")
+storage.create_ko(ko)
+claim_id = ko.id
+result = handle_submit_proposal({{"storage": storage}}, {{
+    "proposal_type": "create_evidence",
+    "proposer": "restart-test",
+    "rationale": f"Process restart evidence test {{'{suffix}'}}",
+    "evidence_claim_id": claim_id,
+    "evidence_observation": f"Contradicts after restart {{'{suffix}'}}",
+    "evidence_relation_type": "contradicts",
+}})
+proposal_id = result["proposal_id"]
+# Wait for search indexing with retries
+for attempt in range(10):
+    mem_uuid = storage._lookup_by_key(f"ch:proposal:{{proposal_id}}")
+    if mem_uuid:
+        break
+    time.sleep(1)
+else:
+    raise RuntimeError("Proposal not indexable after 10s")
+with open({repr(tmp_file)}, "w") as out:
+    json.dump({{"proposal_id": proposal_id, "claim_id": claim_id}}, out)
+print(json.dumps({{"proposal_id": proposal_id, "claim_id": claim_id}}))
+''')
+        try:
+            data1 = _subprocess_script(phase1_script)
 
-        claim_id = f"live-claim-restart-ev-{_run_suffix}"
-        storage1.create_ko(KnowledgeObject(id=claim_id, type=KOType.HYPOTHESIS,
-                                          title="Claim for restart evidence test"))
+            phase2_script = os.path.join(os.path.dirname(__file__),
+                                         "_restart_phase2_ev.py")
+            with open(phase2_script, "w") as f:
+                f.write(f'''
+import sys, json
+sys.path.insert(0, {repr(_repo_dir)})
+sys.path.insert(0, "/home/egiuth/.local/share/superretometer-runtime")
+from memory_adapter import MemoryAdapter
+from cognitive_harness.model.ko import CONTRADICTION_INBOUND
+with open({repr(tmp_file)}) as f:
+    data = json.load(f)
+storage = MemoryAdapter(
+    server_url="{_server_url}", api_key="{_token}",
+    project_id="{_project_id}",
+)
+assert len(storage._proposals) == 0
+assert len(storage._ko_id_map) == 0
+exec_result = storage.validate_and_execute(data["proposal_id"])
+incoming = storage.get_incoming_relations(data["claim_id"], CONTRADICTION_INBOUND)
+ev_ch_ids = [src for src, rt in incoming]
+result = {{
+    "state": exec_result.state.value,
+    "evidence_relation_type": exec_result.evidence_relation_type,
+    "created_evidence_id": exec_result.created_evidence_id,
+    "contradicts_edge_found": exec_result.created_evidence_id in ev_ch_ids if exec_result.created_evidence_id else False,
+    "error": exec_result.rejection_reason,
+}}
+print(json.dumps(result))
+''')
+            data2 = _subprocess_script(phase2_script)
 
-        result = handle_submit_proposal({"storage": storage1}, {
-            "proposal_type": "create_evidence",
-            "proposer": "integration-test",
-            "rationale": "Restart restore CREATE_EVIDENCE",
-            "evidence_claim_id": claim_id,
-            "evidence_observation": "Contradicts after restart.",
-            "evidence_relation_type": "contradicts",
-        })
-        proposal_id = result["proposal_id"]
-        assert "error" not in result, result
-
-        mem_uuid = find_proposal_mem_uuid(storage1, proposal_id)
-        assert mem_uuid is not None
-
-        # Adapter 2: fresh, empty cache, with proposal UUID
-        storage2 = MemoryAdapter(
-            server_url=_server_url, api_key=_token, project_id=_project_id,
-        )
-        assert proposal_id not in storage2._proposals
-        storage2._created_ids.add(mem_uuid)
-
-        # Also add the claim's UUID so _resolve_ch_id can find it
-        claim_mem = storage1._resolve_ch_id(claim_id)
-        storage2._ko_id_map[claim_id] = claim_mem
-        storage2._memory_id_map[claim_mem] = claim_id
-
-        exec_result = storage2.validate_and_execute(proposal_id)
-
-        assert exec_result.state.value == "accepted", exec_result.rejection_reason
-        assert exec_result.evidence_relation_type == "contradicts", \
-            f"relation_type not restored: {exec_result.evidence_relation_type}"
-        assert exec_result.evidence_claim_id == claim_id
-        assert exec_result.evidence_observation == "Contradicts after restart."
-
-        # Verify CONTRADICTS edge was created
-        assert exec_result.created_evidence_id
-        incoming = storage2.get_incoming_relations(claim_id, CONTRADICTION_INBOUND)
-        evidence_ch_ids = [src for src, rt in incoming]
-        assert exec_result.created_evidence_id in evidence_ch_ids, \
-            f"CONTRADICTS edge not created: incoming={evidence_ch_ids}"
+            assert data2["state"] == "accepted", f"Rejected: {data2['error']}"
+            assert data2["evidence_relation_type"] == "contradicts", \
+                f"relation_type not restored: {data2['evidence_relation_type']}"
+            assert data2["contradicts_edge_found"], \
+                "CONTRADICTS edge not created after process restart"
+        finally:
+            for f in (phase1_script, phase2_script):
+                try: os.unlink(f)
+                except OSError: pass
 
 
 if __name__ == "__main__":
