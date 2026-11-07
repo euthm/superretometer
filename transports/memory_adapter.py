@@ -503,7 +503,15 @@ class MemoryAdapter(StorageInterface):
             if item.get("object", {}).get("key") == key
         ]
         if len(matches) == 0:
-            # Fallback: for ch:ko:{uuid} keys, try direct UUID fetch
+            # Fallback 1: scan _created_ids for matching key (covers indexing delay)
+            for cid in self._created_ids:
+                try:
+                    obj = self._get(f"/api/graph/objects/{cid}")
+                    if obj.get("key") == key:
+                        return obj.get("canonical_id", obj.get("id"))
+                except (requests.HTTPError, KeyError):
+                    continue
+            # Fallback 2: for ch:ko:{uuid} keys, try direct UUID fetch
             if key.startswith("ch:ko:"):
                 ch_id = key[6:]
                 try:
@@ -511,7 +519,6 @@ class MemoryAdapter(StorageInterface):
                     obj = self._get(f"/api/graph/objects/{ch_id}")
                     obj_key = obj.get("key", "")
                     if obj_key == key:
-                        # Found it — CH ID is a valid Memory UUID
                         return obj.get("canonical_id", obj.get("id"))
                 except (ValueError, requests.HTTPError):
                     pass
@@ -1141,7 +1148,10 @@ class MemoryAdapter(StorageInterface):
         # Link to claim via edge — must use Memory UUIDs
         claim_uuid = self._resolve_ch_id(claim_id)
         if not self._create_edge(ev_mem_uuid, claim_uuid, edge_type):
-            log.warning("Failed to create %s edge %s -> %s", edge_type, ev_mem_uuid, claim_uuid)
+            raise RuntimeError(
+                f"Failed to create {edge_type} edge {ev_mem_uuid} -> {claim_uuid}: "
+                "evidence registered but graph link missing"
+            )
 
         # Update claim's evidence_ids
         claim = self.get_ko(claim_id)
@@ -1430,7 +1440,8 @@ class MemoryAdapter(StorageInterface):
                 if p.evidence_claim_id:
                     ev_id = self.add_evidence(
                         f"ev-{proposal_id}", p.evidence_claim_id,
-                        "submitted", p.evidence_observation, p.evidence_records
+                        "submitted", p.evidence_observation, p.evidence_records,
+                        relation_type=p.evidence_relation_type,
                     )
                     p.created_evidence_id = ev_id
                     p.state = ProposalState.ACCEPTED
