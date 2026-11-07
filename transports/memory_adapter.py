@@ -11,6 +11,8 @@ import json
 import logging
 import os
 import uuid
+from dataclasses import fields
+from enum import Enum
 from datetime import datetime, timezone
 from typing import Any
 
@@ -34,7 +36,7 @@ from cognitive_harness.model.ko import (
     JUSTIFICATION_OUTBOUND,
     IMPACT_RELATIONS,
 )
-from cognitive_harness.model.proposal import Proposal
+from cognitive_harness.model.proposal import Proposal, ProposalType, ProposalState
 from cognitive_harness.storage.interface import StorageInterface
 from cognitive_harness.exceptions import IncompleteEnumerationError
 
@@ -47,6 +49,59 @@ PAGE_SIZE = 200
 
 
 # ── Serialization helpers ──────────────────────────────────────────────────
+
+_PROPOSAL_JSON_FIELDS = frozenset({
+    "ko_content", "ko_viewpoints", "ko_assumptions", "updates",
+    "tension_ko_ids", "tension_viewpoints", "evidence_records",
+})
+_PROPOSAL_ENUM_FIELDS = {
+    "type": ProposalType, "state": ProposalState, "ko_type": KOType,
+    "ko_truth_category": TruthCategory, "ko_confidence": ConfidenceLevel,
+    "target_status": EpistemicStatus, "relation_type": RelationType,
+}
+
+
+def proposal_to_properties(proposal: Proposal) -> dict:
+    """Persist every proposal field, including execution results, without defaults drift."""
+    props = {}
+    for field in fields(Proposal):
+        value = getattr(proposal, field.name)
+        if isinstance(value, Enum):
+            value = value.value
+        if field.name in _PROPOSAL_JSON_FIELDS:
+            value = json.dumps(value)
+        props[f"ch_proposal_{field.name}"] = value
+    return props
+
+
+def proposal_from_properties(proposal_id: str, props: dict) -> Proposal:
+    """Restore typed fields; absent fields in older proposals retain model defaults."""
+    kwargs = {"id": proposal_id}
+    for field in fields(Proposal):
+        key = f"ch_proposal_{field.name}"
+        if field.name == "id" or key not in props:
+            continue
+        value = props[key]
+        if field.name in _PROPOSAL_JSON_FIELDS and isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (ValueError, TypeError):
+                if field.name != "ko_content":
+                    raise ValueError(f"Invalid persisted proposal field: {field.name}")
+                # Older proposals may contain unencoded textual content.
+        if field.name in _PROPOSAL_ENUM_FIELDS:
+            if value in (None, ""):
+                continue
+            value = _PROPOSAL_ENUM_FIELDS[field.name](value)
+        if field.name == "updates":
+            value = dict(value)
+            for name, enum_type in (("epistemic_status", EpistemicStatus),
+                                    ("truth_category", TruthCategory),
+                                    ("confidence", ConfidenceLevel)):
+                if name in value:
+                    value[name] = enum_type(value[name])
+        kwargs[field.name] = value
+    return Proposal(**kwargs)
 
 def ko_to_memory_object(ko: KnowledgeObject) -> dict:
     """Convert a canonical KnowledgeObject to Memory API object format."""
@@ -1128,6 +1183,8 @@ class MemoryAdapter(StorageInterface):
                      observation: str, records: list[dict],
                      source_ko_id: str | None = None,
                      relation_type: str = "supports") -> str:
+        if relation_type not in ("supports", "contradicts"):
+            raise ValueError(f"Invalid evidence relation_type: {relation_type!r}")
         ev = {
             "id": evidence_id,
             "claim_id": claim_id,
@@ -1136,7 +1193,8 @@ class MemoryAdapter(StorageInterface):
             "records": records,
             "relation_type": relation_type,
         }
-        self._evidence[evidence_id] = ev
+        if source_ko_id is not None:
+            ev["source_ko_id"] = source_ko_id
 
         # Determine edge type from relation_type
         edge_type = RelationType.SUPPORTS.value
@@ -1148,16 +1206,10 @@ class MemoryAdapter(StorageInterface):
             id=evidence_id,
             type=KOType.EVIDENCE_ITEM,
             title=f"Evidence for {claim_id}",
-            content={"status": status, "observation": observation, "records": records, "relation_type": relation_type},
+            content=dict(ev),
             provenance=Provenance(source="evidence", author="system"),
         )
-        mem_obj = ko_to_memory_object(ev_ko)
-        mem_obj["projectId"] = self.project_id
-        ev_result = self._post("/api/graph/objects", mem_obj)
-        ev_mem_uuid = ev_result.get("id", evidence_id)
-        self._created_ids.add(ev_mem_uuid)
-        self._ko_id_map[evidence_id] = ev_mem_uuid
-        self._memory_id_map[ev_mem_uuid] = evidence_id
+        ev_mem_uuid = self.create_ko(ev_ko)
 
         # Link to claim via edge — must use Memory UUIDs
         claim_uuid = self._resolve_ch_id(claim_id)
@@ -1172,6 +1224,7 @@ class MemoryAdapter(StorageInterface):
         if claim and evidence_id not in claim.evidence_ids:
             self.update_ko(claim_id, {"evidence_ids": claim.evidence_ids + [evidence_id]})
 
+        self._evidence[evidence_id] = ev
         return evidence_id
 
     def delete_ko(self, ko_id: str) -> None:
@@ -1185,24 +1238,40 @@ class MemoryAdapter(StorageInterface):
     def get_evidence(self, evidence_id: str) -> dict | None:
         if evidence_id in self._evidence:
             return self._evidence[evidence_id]
-        # Try fetching from Memory
-        try:
-            obj = self._get(f"/api/graph/objects/{evidence_id}")
-            props = obj.get("properties", {})
-            if props.get("ch_ko_type") == KOType.EVIDENCE_ITEM.value:
-                return {
-                    "id": evidence_id,
-                    "claim_id": props.get("content", {}).get("claim_id", ""),
-                    "status": props.get("content", {}).get("status", ""),
-                    "observation": props.get("content", {}).get("observation", ""),
-                    "records": props.get("content", {}).get("records", []),
-                }
-        except requests.HTTPError:
-            pass
-        return None
+        ko = self.get_ko(evidence_id)
+        if ko is None or ko.type != KOType.EVIDENCE_ITEM:
+            return None
+        content = ko.content if isinstance(ko.content, dict) else {}
+        # Older evidence objects omitted claim_id; recover it from the graph.
+        edge = next((r for r in ko.relations if r.type in
+                     (RelationType.SUPPORTS, RelationType.CONTRADICTS)), None)
+        ev = {
+            "id": ko.id,
+            "claim_id": content.get("claim_id") or (edge.to if edge else ""),
+            "status": content.get("status", ""),
+            "observation": content.get("observation", ""),
+            "records": content.get("records", []),
+            "relation_type": content.get("relation_type") or
+                             (edge.type.value if edge else "supports"),
+        }
+        if "source_ko_id" in content:
+            ev["source_ko_id"] = content["source_ko_id"]
+        self._evidence[ko.id] = ev
+        return ev
 
     def list_evidence_for_ko(self, ko_id: str) -> list[dict]:
-        return [ev for ev in self._evidence.values() if ev["claim_id"] == ko_id]
+        claim = self.get_ko(ko_id)
+        if claim is None:
+            return []
+        evidence_ids = list(claim.evidence_ids)
+        evidence_ids.extend(src for src, _ in self.get_incoming_relations(
+            claim.id, frozenset({RelationType.SUPPORTS, RelationType.CONTRADICTS})))
+        result = []
+        for evidence_id in dict.fromkeys(evidence_ids):
+            ev = self.get_evidence(evidence_id)
+            if ev is not None and ev["claim_id"] == claim.id:
+                result.append(ev)
+        return result
 
     # ── Locking (no-op per STORAGE.md) ────────────────────────────────
 
@@ -1300,22 +1369,7 @@ class MemoryAdapter(StorageInterface):
             "type": "Concept",
             "key": f"ch:proposal:{proposal.id}",
             "projectId": self.project_id,
-            "properties": {
-                "ch_proposal_type": proposal.type.value if hasattr(proposal.type, 'value') else str(proposal.type),
-                "ch_proposal_state": proposal.state.value if hasattr(proposal.state, 'value') else str(proposal.state),
-                "ch_proposal_proposer": proposal.proposer,
-                "ch_proposal_rationale": proposal.rationale,
-                "ch_proposal_target_ko_id": proposal.target_ko_id,
-                "ch_proposal_ko_type": proposal.ko_type.value if proposal.ko_type and hasattr(proposal.ko_type, 'value') else str(proposal.ko_type) if proposal.ko_type else "",
-                "ch_proposal_ko_title": proposal.ko_title,
-                "ch_proposal_ko_content": json.dumps(proposal.ko_content) if isinstance(proposal.ko_content, (dict, list)) else str(proposal.ko_content) if proposal.ko_content else "",
-                "ch_proposal_ko_truth_category": proposal.ko_truth_category.value if proposal.ko_truth_category is not None else "",
-                "ch_proposal_rejection_reason": proposal.rejection_reason,
-                "ch_proposal_created_ko_id": proposal.created_ko_id,
-                "ch_proposal_evidence_claim_id": proposal.evidence_claim_id,
-                "ch_proposal_evidence_observation": proposal.evidence_observation,
-                "ch_proposal_evidence_relation_type": proposal.evidence_relation_type,
-            },
+            "properties": proposal_to_properties(proposal),
         }
         try:
             result = self._post("/api/graph/objects", proposal_obj)
@@ -1341,38 +1395,7 @@ class MemoryAdapter(StorageInterface):
             if mem_uuid:
                 obj = self._get(f"/api/graph/objects/{mem_uuid}")
                 props = obj.get("properties", {})
-                p_type = ProposalType(props.get("ch_proposal_type", "create_ko"))
-                p = Proposal(
-                    id=proposal_id,
-                    type=p_type,
-                    proposer=props.get("ch_proposal_proposer", ""),
-                    rationale=props.get("ch_proposal_rationale", ""),
-                    state=ProposalState(props.get("ch_proposal_state", "pending")),
-                    rejection_reason=props.get("ch_proposal_rejection_reason", ""),
-                )
-                # Restore type-specific fields
-                if p_type == ProposalType.CREATE_KO:
-                    p.ko_title = props.get("ch_proposal_ko_title", "")
-                    ko_content_raw = props.get("ch_proposal_ko_content")
-                    if ko_content_raw:
-                        try:
-                            p.ko_content = json.loads(ko_content_raw)
-                        except (json.JSONDecodeError, TypeError):
-                            p.ko_content = ko_content_raw
-                    else:
-                        p.ko_content = None
-                    tc_raw = props.get("ch_proposal_ko_truth_category", "")
-                    if tc_raw:
-                        try:
-                            p.ko_truth_category = TruthCategory(tc_raw)
-                        except ValueError:
-                            pass  # Leave as None on invalid
-                elif p_type in (ProposalType.UPDATE_KO, ProposalType.TRANSITION_STATUS):
-                    p.target_ko_id = props.get("ch_proposal_target_ko_id", "")
-                elif p_type == ProposalType.CREATE_EVIDENCE:
-                    p.evidence_claim_id = props.get("ch_proposal_evidence_claim_id", "")
-                    p.evidence_observation = props.get("ch_proposal_evidence_observation", "")
-                    p.evidence_relation_type = props.get("ch_proposal_evidence_relation_type", "supports")
+                p = proposal_from_properties(proposal_id, props)
                 self._proposals[p.id] = p
             else:
                 raise ValueError(f"Proposal {proposal_id} not found")
@@ -1399,6 +1422,8 @@ class MemoryAdapter(StorageInterface):
                     scope=p.ko_scope,
                     assumptions=p.ko_assumptions,
                     confidence=p.ko_confidence,
+                    valid_from=p.ko_valid_from,
+                    valid_to=p.ko_valid_to,
                 )
                 if p.ko_truth_category is not None:
                     ko_kwargs["truth_category"] = p.ko_truth_category
@@ -1476,11 +1501,7 @@ class MemoryAdapter(StorageInterface):
             wrapper_uuid = self._lookup_by_key(f"ch:proposal:{proposal_id}")
             if wrapper_uuid:
                 self._patch(f"/api/graph/objects/{wrapper_uuid}", {
-                    "properties": {
-                        "ch_proposal_state": p.state.value if hasattr(p.state, 'value') else str(p.state),
-                        "ch_proposal_rejection_reason": p.rejection_reason,
-                        "ch_proposal_created_ko_id": p.created_ko_id,
-                    }
+                    "properties": proposal_to_properties(p),
                 })
         except Exception:
             pass

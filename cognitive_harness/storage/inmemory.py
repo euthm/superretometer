@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from cognitive_harness.model.ko import (
     KnowledgeObject, EpistemicStatus, RelationType, VALID_TRANSITIONS,
-    Relation, Provenance, IMPACT_RELATIONS, JUSTIFICATION_RELATIONS, Dataset,
+    Relation, Provenance, IMPACT_RELATIONS, JUSTIFICATION_RELATIONS, Dataset, KOType,
     JUSTIFICATION_INBOUND, JUSTIFICATION_OUTBOUND,
 )
 from cognitive_harness.model.proposal import Proposal, ProposalType, ProposalState
@@ -221,6 +221,11 @@ class InMemoryStorage(StorageInterface):
         self-attesting.  When omitted, external source is assumed.
         relation_type: "supports" or "contradicts".
         """
+        if relation_type not in ("supports", "contradicts"):
+            raise ValueError(f"Invalid evidence relation_type: {relation_type!r}")
+        ko = self._kos.get(claim_id)
+        if ko is None and relation_type == "contradicts":
+            raise ValueError(f"Claim KO {claim_id} not found")
         ev = {
             "id": evidence_id,
             "claim_id": claim_id,
@@ -232,7 +237,14 @@ class InMemoryStorage(StorageInterface):
         if source_ko_id is not None:
             ev["source_ko_id"] = source_ko_id
         self._evidence[evidence_id] = ev
-        ko = self._kos.get(claim_id)
+        if relation_type == "contradicts":
+            evidence = KnowledgeObject(
+                id=evidence_id, type=KOType.EVIDENCE_ITEM,
+                title=f"Evidence for {claim_id}", content=dict(ev),
+                provenance=Provenance(source="evidence", author="system"),
+                relations=[Relation(to=claim_id, type=RelationType.CONTRADICTS)],
+            )
+            self.create_ko(evidence)
         if ko and evidence_id not in ko.evidence_ids:
             ko.evidence_ids.append(evidence_id)
         return evidence_id

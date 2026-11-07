@@ -31,7 +31,10 @@ from cognitive_harness.mcp.protocol import tool_result
 
 # Local adapter
 sys.path.insert(0, os.path.dirname(__file__))
-from memory_adapter import MemoryAdapter
+if __package__:
+    from .memory_adapter import MemoryAdapter
+else:
+    from memory_adapter import MemoryAdapter
 
 # ── Logging: stderr only ─────────────────────────────────────────────────
 
@@ -425,7 +428,7 @@ def handle_adopt_existing_ko(components: dict, args: dict) -> dict:
 def handle_submit_proposal(components: dict, args: dict) -> dict:
     """Submit a structured proposal."""
     from cognitive_harness.model.proposal import Proposal, ProposalType
-    from cognitive_harness.model.ko import KOType, EpistemicStatus, TruthCategory
+    from cognitive_harness.model.ko import KOType, EpistemicStatus, TruthCategory, ConfidenceLevel
 
     storage = components["storage"]
 
@@ -443,6 +446,16 @@ def handle_submit_proposal(components: dict, args: dict) -> dict:
 
     if p_type == ProposalType.CREATE_KO:
         proposal.ko_title = args.get("ko_title", "")
+        proposal.ko_scope = args.get("ko_scope", "")
+        proposal.ko_assumptions = args.get("ko_assumptions", [])
+        proposal.ko_viewpoints = args.get("ko_viewpoints", [])
+        proposal.ko_valid_from = args.get("ko_valid_from")
+        proposal.ko_valid_to = args.get("ko_valid_to")
+        if args.get("ko_confidence"):
+            try:
+                proposal.ko_confidence = ConfidenceLevel(args["ko_confidence"])
+            except ValueError:
+                return {"error": f"Invalid ko_confidence: {args['ko_confidence']!r}"}
         ktype = args.get("ko_type")
         if ktype:
             try:
@@ -450,7 +463,7 @@ def handle_submit_proposal(components: dict, args: dict) -> dict:
             except ValueError:
                 pass
         content = args.get("ko_content")
-        if content:
+        if content is not None:
             try:
                 proposal.ko_content = json.loads(content)
             except (json.JSONDecodeError, TypeError):
@@ -612,12 +625,18 @@ TOOLS_METADATA = {
                 "ko_type": {"type": "string", "description": "KOType (for create_ko)"},
                 "ko_truth_category": {"type": "string", "description": "TruthCategory for create_ko: physical_observation, sourced_material_data, conservation_law, documented_decision, assumption, fitted_parameter, model_derived, validation_result, mathematical_identity. Optional — defaults to assumption."},
                 "ko_content": {"type": "string", "description": "KO content as JSON string (for create_ko)"},
+                "ko_scope": {"type": "string", "description": "Scope boundary for create_ko"},
+                "ko_assumptions": {"type": "array", "items": {"type": "string"}},
+                "ko_viewpoints": {"type": "array", "items": {"type": "string"}},
+                "ko_valid_from": {"type": "string"},
+                "ko_valid_to": {"type": "string"},
+                "ko_confidence": {"type": "string", "enum": ["speculative", "low", "medium", "high", "certain"]},
                 "target_ko_id": {"type": "string", "description": "Target KO ID (for update/transition)"},
                 "target_status": {"type": "string", "description": "Target EpistemicStatus (for transition)"},
                 "updates": {"type": "string", "description": "Updates as JSON string (for update_ko)"},
                 "evidence_claim_id": {"type": "string", "description": "Claim ID (for create_evidence)"},
                 "evidence_observation": {"type": "string", "description": "Observation (for create_evidence)"},
-                "evidence_relation_type": {"type": "string", "description": "Relation type for evidence: supports (default) or contradicts"},
+                "evidence_relation_type": {"type": "string", "enum": ["supports", "contradicts"], "description": "Relation type for evidence: supports (default) or contradicts"},
             },
             "required": ["proposal_type", "proposer", "rationale"],
         },
