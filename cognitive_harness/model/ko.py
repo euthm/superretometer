@@ -92,6 +92,7 @@ class AntiPattern(str, Enum):
     TAUTOLOGICAL_VALIDATION = "tautological_validation"
     INERT_PARAMETER = "inert_parameter"
     PHYSICALLY_UNREALIZABLE = "physically_unrealizable"
+    CONTRADICTED = "contradicted"
     UNSUPPORTED_TRANSFER = "unsupported_transfer"
     CIRCULAR_DEPENDENCY = "circular_dependency"
 
@@ -185,11 +186,17 @@ JUSTIFICATION_RELATIONS = frozenset({
     RelationType.TRANSFERRED_FROM,
 })
 
+# Relations that indicate contradiction (inbound to conclusion)
+CONTRADICTION_INBOUND = frozenset({
+    RelationType.CONTRADICTS,
+})
+
 IMPACT_RELATIONS = frozenset({
     RelationType.SUPPORTS,
     RelationType.DEPENDS_ON,
     RelationType.DERIVED_FROM,
     RelationType.VALIDATES,
+    RelationType.CONTRADICTS,
     RelationType.CONSTRAINS,
     RelationType.IMPACTS,
 })

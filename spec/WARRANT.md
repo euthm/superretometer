@@ -39,8 +39,28 @@ Warrant is NOT determined by:
 | `TAUTOLOGICAL_VALIDATION` | VALIDATED derivation where all upstream KOs share a single provenance root |
 | `INERT_PARAMETER` | Parameter in KO content but not in causal/state equations (requires causal graph) |
 | `PHYSICALLY_UNREALIZABLE` | KO contradicts a CONSERVATION_LAW-type constraint |
+| `CONTRADICTED` | An explicit incoming CONTRADICTS edge from a KO other than a CONSERVATION_LAW constraint |
 | `UNSUPPORTED_TRANSFER` | TRANSFERRED derivation with empty `domain_mapping_ko_id` |
 | `CIRCULAR_DEPENDENCY` | Cycle detected in justification graph traversal |
+
+### Explicit counter-evidence
+
+`CONTRADICTS` points from counter-evidence to the claim. An incoming explicit
+contradiction makes the claim `UNWARRANTED` and its source is returned in
+`contradicting_kos`. This is a conservative assessment of an unresolved conflict,
+not a declaration that the source is independently verified or the claim is false.
+Contradictions are not supporting premises and MUST NOT be counted as independent
+support or traversed as SUPPORTS edges. A generic conflict is `CONTRADICTED`;
+`PHYSICALLY_UNREALIZABLE` remains reserved for conservation-law conflicts.
+
+`add_evidence(..., relation_type="contradicts")` MUST retain the evidence record,
+materialize an EVIDENCE_ITEM KO, and create the CONTRADICTS edge to the claim.
+The default evidence KO remains ASSUMPTION: attachment does not certify truth or
+independence. Both storage implementations follow this counter-evidence contract.
+The legacy InMemoryStorage SUPPORTS record path remains unchanged pending
+CH-EVIDENCE-SEMANTICS: attaching a verification record does not add another
+carrying premise. Explicit SUPPORTS KOs/edges remain the justification path.
+Evidence reads and lists on persistent storage MUST survive a fresh adapter.
 
 ## Falsifiability Principle
 

@@ -27,10 +27,14 @@ from cognitive_harness.orchestration.engine import OrchestrationEngine
 from cognitive_harness.model.ko import GateStatus
 from cognitive_harness.model.proposal import Proposal, ProposalType
 from cognitive_harness.exceptions import IncompleteEnumerationError
+from cognitive_harness.mcp.protocol import tool_result
 
 # Local adapter
 sys.path.insert(0, os.path.dirname(__file__))
-from memory_adapter import MemoryAdapter
+if __package__:
+    from .memory_adapter import MemoryAdapter
+else:
+    from memory_adapter import MemoryAdapter
 
 # ── Logging: stderr only ─────────────────────────────────────────────────
 
@@ -108,10 +112,10 @@ def startup() -> dict:
     # Pin canonical version — fail closed if wrong version loaded
     from importlib.metadata import version as pkg_version
     canonical_version = pkg_version("cognitive-harness")
-    if canonical_version not in ("0.6.4", "0.7.0"):
+    if canonical_version not in ("0.6.4", "0.7.0", "0.7.1"):
         raise RuntimeError(
             f"Refusing to start: cognitive-harness {canonical_version} loaded, "
-            f"expected 0.6.4 or 0.7.0. Check PYTHONPATH / installed packages for stale versions."
+            f"expected 0.6.4, 0.7.0, or 0.7.1. Check PYTHONPATH / installed packages for stale versions."
         )
 
     # Log to stderr — never stdout
@@ -247,7 +251,12 @@ class RuntimeServer:
                 tool_name = params.get("name", "")
                 tool_args = params.get("arguments", {})
                 result = self._handle_tool(tool_name, tool_args)
-                self._send_response(id=req_id, result=result)
+                self._send_response(
+                    id=req_id,
+                    result=tool_result(
+                        result, is_error=isinstance(result, dict) and "error" in result
+                    ),
+                )
             elif method == "tools/list":
                 tools = self._list_tools()
                 self._send_response(id=req_id, result={"tools": tools})
@@ -419,7 +428,7 @@ def handle_adopt_existing_ko(components: dict, args: dict) -> dict:
 def handle_submit_proposal(components: dict, args: dict) -> dict:
     """Submit a structured proposal."""
     from cognitive_harness.model.proposal import Proposal, ProposalType
-    from cognitive_harness.model.ko import KOType, EpistemicStatus
+    from cognitive_harness.model.ko import KOType, EpistemicStatus, TruthCategory, ConfidenceLevel
 
     storage = components["storage"]
 
@@ -437,6 +446,16 @@ def handle_submit_proposal(components: dict, args: dict) -> dict:
 
     if p_type == ProposalType.CREATE_KO:
         proposal.ko_title = args.get("ko_title", "")
+        proposal.ko_scope = args.get("ko_scope", "")
+        proposal.ko_assumptions = args.get("ko_assumptions", [])
+        proposal.ko_viewpoints = args.get("ko_viewpoints", [])
+        proposal.ko_valid_from = args.get("ko_valid_from")
+        proposal.ko_valid_to = args.get("ko_valid_to")
+        if args.get("ko_confidence"):
+            try:
+                proposal.ko_confidence = ConfidenceLevel(args["ko_confidence"])
+            except ValueError:
+                return {"error": f"Invalid ko_confidence: {args['ko_confidence']!r}"}
         ktype = args.get("ko_type")
         if ktype:
             try:
@@ -444,11 +463,17 @@ def handle_submit_proposal(components: dict, args: dict) -> dict:
             except ValueError:
                 pass
         content = args.get("ko_content")
-        if content:
+        if content is not None:
             try:
                 proposal.ko_content = json.loads(content)
             except (json.JSONDecodeError, TypeError):
                 proposal.ko_content = content
+        tc_val = args.get("ko_truth_category")
+        if tc_val:
+            try:
+                proposal.ko_truth_category = TruthCategory(tc_val)
+            except ValueError:
+                return {"error": f"Invalid truth_category: {tc_val!r}. Valid: {[c.value for c in TruthCategory]}"}
 
     elif p_type in (ProposalType.UPDATE_KO, ProposalType.TRANSITION_STATUS):
         proposal.target_ko_id = args.get("target_ko_id", "")
@@ -469,6 +494,7 @@ def handle_submit_proposal(components: dict, args: dict) -> dict:
     elif p_type == ProposalType.CREATE_EVIDENCE:
         proposal.evidence_claim_id = args.get("evidence_claim_id", "")
         proposal.evidence_observation = args.get("evidence_observation", "")
+        proposal.evidence_relation_type = args.get("evidence_relation_type", "supports")
 
     proposal_id = storage.submit_proposal(proposal)
     return {"proposal_id": proposal_id, "state": proposal.state.value}
@@ -597,12 +623,20 @@ TOOLS_METADATA = {
                 "rationale": {"type": "string", "description": "Why this change is needed"},
                 "ko_title": {"type": "string", "description": "KO title (for create_ko)"},
                 "ko_type": {"type": "string", "description": "KOType (for create_ko)"},
+                "ko_truth_category": {"type": "string", "description": "TruthCategory for create_ko: physical_observation, sourced_material_data, conservation_law, documented_decision, assumption, fitted_parameter, model_derived, validation_result, mathematical_identity. Optional — defaults to assumption."},
                 "ko_content": {"type": "string", "description": "KO content as JSON string (for create_ko)"},
+                "ko_scope": {"type": "string", "description": "Scope boundary for create_ko"},
+                "ko_assumptions": {"type": "array", "items": {"type": "string"}},
+                "ko_viewpoints": {"type": "array", "items": {"type": "string"}},
+                "ko_valid_from": {"type": "string"},
+                "ko_valid_to": {"type": "string"},
+                "ko_confidence": {"type": "string", "enum": ["speculative", "low", "medium", "high", "certain"]},
                 "target_ko_id": {"type": "string", "description": "Target KO ID (for update/transition)"},
                 "target_status": {"type": "string", "description": "Target EpistemicStatus (for transition)"},
                 "updates": {"type": "string", "description": "Updates as JSON string (for update_ko)"},
                 "evidence_claim_id": {"type": "string", "description": "Claim ID (for create_evidence)"},
                 "evidence_observation": {"type": "string", "description": "Observation (for create_evidence)"},
+                "evidence_relation_type": {"type": "string", "enum": ["supports", "contradicts"], "description": "Relation type for evidence: supports (default) or contradicts"},
             },
             "required": ["proposal_type", "proposer", "rationale"],
         },

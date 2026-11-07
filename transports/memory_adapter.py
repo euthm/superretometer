@@ -11,6 +11,8 @@ import json
 import logging
 import os
 import uuid
+from dataclasses import fields
+from enum import Enum
 from datetime import datetime, timezone
 from typing import Any
 
@@ -34,7 +36,7 @@ from cognitive_harness.model.ko import (
     JUSTIFICATION_OUTBOUND,
     IMPACT_RELATIONS,
 )
-from cognitive_harness.model.proposal import Proposal
+from cognitive_harness.model.proposal import Proposal, ProposalType, ProposalState
 from cognitive_harness.storage.interface import StorageInterface
 from cognitive_harness.exceptions import IncompleteEnumerationError
 
@@ -47,6 +49,59 @@ PAGE_SIZE = 200
 
 
 # ── Serialization helpers ──────────────────────────────────────────────────
+
+_PROPOSAL_JSON_FIELDS = frozenset({
+    "ko_content", "ko_viewpoints", "ko_assumptions", "updates",
+    "tension_ko_ids", "tension_viewpoints", "evidence_records",
+})
+_PROPOSAL_ENUM_FIELDS = {
+    "type": ProposalType, "state": ProposalState, "ko_type": KOType,
+    "ko_truth_category": TruthCategory, "ko_confidence": ConfidenceLevel,
+    "target_status": EpistemicStatus, "relation_type": RelationType,
+}
+
+
+def proposal_to_properties(proposal: Proposal) -> dict:
+    """Persist every proposal field, including execution results, without defaults drift."""
+    props = {}
+    for field in fields(Proposal):
+        value = getattr(proposal, field.name)
+        if isinstance(value, Enum):
+            value = value.value
+        if field.name in _PROPOSAL_JSON_FIELDS:
+            value = json.dumps(value)
+        props[f"ch_proposal_{field.name}"] = value
+    return props
+
+
+def proposal_from_properties(proposal_id: str, props: dict) -> Proposal:
+    """Restore typed fields; absent fields in older proposals retain model defaults."""
+    kwargs = {"id": proposal_id}
+    for field in fields(Proposal):
+        key = f"ch_proposal_{field.name}"
+        if field.name == "id" or key not in props:
+            continue
+        value = props[key]
+        if field.name in _PROPOSAL_JSON_FIELDS and isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (ValueError, TypeError):
+                if field.name != "ko_content":
+                    raise ValueError(f"Invalid persisted proposal field: {field.name}")
+                # Older proposals may contain unencoded textual content.
+        if field.name in _PROPOSAL_ENUM_FIELDS:
+            if value in (None, ""):
+                continue
+            value = _PROPOSAL_ENUM_FIELDS[field.name](value)
+        if field.name == "updates":
+            value = dict(value)
+            for name, enum_type in (("epistemic_status", EpistemicStatus),
+                                    ("truth_category", TruthCategory),
+                                    ("confidence", ConfidenceLevel)):
+                if name in value:
+                    value[name] = enum_type(value[name])
+        kwargs[field.name] = value
+    return Proposal(**kwargs)
 
 def ko_to_memory_object(ko: KnowledgeObject) -> dict:
     """Convert a canonical KnowledgeObject to Memory API object format."""
@@ -125,7 +180,8 @@ def ko_to_memory_object(ko: KnowledgeObject) -> dict:
         props["ch_provenance_revision"] = p.revision
         if p.derived_from:
             props["ch_provenance_derived_from"] = p.derived_from
-        props["ch_provenance_independent"] = p.independent
+        if p.independent is not None:
+            props["ch_provenance_independent"] = p.independent
 
     # Derivation
     if ko.derivation:
@@ -179,40 +235,48 @@ def memory_object_to_ko(obj: dict) -> KnowledgeObject:
     """
     props = obj.get("properties", {})
     # Restore CH ID from Memory key (v0.6.4 identity fix).
-    # The key is ch:ko:{CH_ID}. If not a CH key, fall back to Memory UUID.
+    # The key is ch:ko:{CH_ID}. If not a CH key, fall back to key or Memory UUID.
     key = obj.get("key", "")
     ko_ch_id = key[6:] if key.startswith("ch:ko:") else None
-    obj_id = ko_ch_id or obj.get("id", str(uuid.uuid4()))
+    obj_id = ko_ch_id or key or obj.get("id", str(uuid.uuid4()))
+
+    def _get(prop_ch, prop_plain, default):
+        """Get property with ch_ prefix first, then plain name."""
+        if prop_ch in props:
+            return props[prop_ch]
+        if prop_plain in props:
+            return props[prop_plain]
+        return default
 
     # KO type
-    raw_type = props.get("ch_ko_type", KOType.REQUIREMENT.value)
+    raw_type = _get("ch_ko_type", "ko_type", KOType.REQUIREMENT.value)
     try:
         ko_type = KOType(raw_type)
     except ValueError:
         ko_type = KOType.REQUIREMENT
 
     # Truth category
-    raw_tc = props.get("ch_truth_category", TruthCategory.ASSUMPTION.value)
+    raw_tc = _get("ch_truth_category", "truth_category", TruthCategory.ASSUMPTION.value)
     try:
         truth_cat = TruthCategory(raw_tc)
     except ValueError:
         truth_cat = TruthCategory.ASSUMPTION
 
     # Epistemic status
-    raw_es = props.get("ch_epistemic_status", EpistemicStatus.PROPOSED.value)
+    raw_es = _get("ch_epistemic_status", "epistemic_status", EpistemicStatus.PROPOSED.value)
     try:
         ep_status = EpistemicStatus(raw_es)
     except ValueError:
         ep_status = EpistemicStatus.PROPOSED
 
     # Confidence
-    raw_cl = props.get("ch_confidence", ConfidenceLevel.SPECULATIVE.value)
+    raw_cl = _get("ch_confidence", "confidence", ConfidenceLevel.SPECULATIVE.value)
     try:
         confidence = ConfidenceLevel(raw_cl)
     except ValueError:
         confidence = ConfidenceLevel.SPECULATIVE
 
-    # Parse provenance
+    # Parse provenance — try ch_ prefix first, then nested 'provenance' dict
     prov = None
     if props.get("ch_provenance_source"):
         prov_ts = props.get("ch_provenance_timestamp", "")
@@ -226,7 +290,21 @@ def memory_object_to_ko(obj: dict) -> KnowledgeObject:
             timestamp=ts,
             revision=props.get("ch_provenance_revision", 1),
             derived_from=props.get("ch_provenance_derived_from"),
-            independent=props.get("ch_provenance_independent", True),
+            independent=props.get("ch_provenance_independent", None),
+        )
+    elif isinstance(props.get("provenance"), dict):
+        p = props["provenance"]
+        try:
+            ts = datetime.fromisoformat(p.get("timestamp", ""))
+        except (ValueError, TypeError):
+            ts = datetime.now(timezone.utc)
+        prov = Provenance(
+            source=p.get("source", "unknown"),
+            author=p.get("author", "system"),
+            timestamp=ts,
+            revision=p.get("revision", 1),
+            derived_from=p.get("derived_from"),
+            independent=p.get("independent", None),
         )
 
     # Parse derivation
@@ -363,6 +441,11 @@ class MemoryAdapter(StorageInterface):
         return f"ch:ko:{ch_id}"
 
     @staticmethod
+    def _is_lookup_key(key: str) -> bool:
+        """Check if a key is an internal lookup object (not a CH KnowledgeObject)."""
+        return key.startswith("ch:lookup:")
+
+    @staticmethod
     def _ch_id_from_key(key: str) -> str | None:
         """Extract CH ID from a Memory key, or None if not a CH key."""
         if key.startswith("ch:ko:"):
@@ -372,36 +455,61 @@ class MemoryAdapter(StorageInterface):
     def _resolve_ch_id(self, ko_id: str) -> str:
         """Resolve a CH ID or Memory UUID to the Memory UUID.
 
-        If ko_id is already in _ko_id_map (forward cache), return the UUID.
-        If ko_id is in _memory_id_map (reverse cache), it's a UUID — return it.
-        If ko_id is an adopted Memory UUID, look up its wrapper.
-        Otherwise, search by exact key ch:ko:{ko_id} and cache the result.
-        Returns Memory UUID. Raises if not found or ambiguous.
+        Order of resolution:
+        1. Forward cache (_ko_id_map).
+        2. Reverse cache (_memory_id_map).
+        3. Lookup object: search for key ch:lookup:{ko_id} (textual, indexed).
+        4. KO object: search for key ch:ko:{ko_id} (UUID key, may be missing).
+        5. Direct UUID fetch: try GET /objects/{ko_id} (works if CH-ID == Memory UUID).
+
+        LIMITATION: Steps 3-4 rely on Memory's semantic search, which may not
+        index newly created objects immediately (observed: 5-10s delay). During
+        this window, resolution falls through to step 5 or returns the input.
+        Memory server (v0.41.148) has no exact key-based lookup endpoint.
+        Returns Memory UUID. Falls back to input if not found.
         """
-        # Already a cached CH ID -> UUID
         if ko_id in self._ko_id_map:
             return self._ko_id_map[ko_id]
-        # Already a cached UUID
         if ko_id in self._memory_id_map:
             return ko_id
-        # Search by exact key
+        # Lookup object — deterministic CH-ID → Memory UUID mapping.
+        # Key prefix "ch:lookup:" is textual and reliably indexed by search.
+        lookup_key = f"ch:lookup:{ko_id}"
+        lookup_uuid = self._lookup_by_key(lookup_key)
+        if lookup_uuid:
+            lookup_obj = self._get(f"/api/graph/objects/{lookup_uuid}")
+            mem_uuid = lookup_obj.get("properties", {}).get("ch_memory_uuid")
+            if mem_uuid:
+                self._ko_id_map[ko_id] = mem_uuid
+                self._memory_id_map[mem_uuid] = ko_id
+                return mem_uuid
+        # KO object — search by exact key ch:ko:{ko_id}
         mem_uuid = self._lookup_by_key(self._ch_key(ko_id))
         if mem_uuid:
             self._ko_id_map[ko_id] = mem_uuid
             self._memory_id_map[mem_uuid] = ko_id
             return mem_uuid
-        # Try as raw Memory UUID — check if it has an adopted wrapper
+        # Direct UUID fetch — works if CH-ID == Memory UUID
         try:
             uuid.UUID(ko_id)
             obj = self._get(f"/api/graph/objects/{ko_id}")
             wrapper_id = obj.get("properties", {}).get("ch_adopted_wrapper_id")
             if wrapper_id:
-                # Resolve wrapper_id to its UUID
                 wrapper_uuid = self._resolve_ch_id(wrapper_id)
                 return wrapper_uuid
+            ch_mem_uuid = obj.get("properties", {}).get("ch_memory_uuid")
+            if ch_mem_uuid:
+                self._ko_id_map[ko_id] = ch_mem_uuid
+                self._memory_id_map[ch_mem_uuid] = ko_id
+                return ch_mem_uuid
+            key = obj.get("key", "")
+            ch_id = self._ch_id_from_key(key)
+            if ch_id:
+                self._memory_id_map[ko_id] = ch_id
+                self._ko_id_map[ch_id] = ko_id
+            return ko_id
         except (ValueError, requests.HTTPError):
             pass
-        # Not found — return the input; caller will get 404 from server
         return ko_id
 
     def _resolve_to_ch_id(self, mem_uuid: str) -> str:
@@ -429,29 +537,69 @@ class MemoryAdapter(StorageInterface):
         """Deterministic exact lookup by Memory key.
 
         Searches for entities matching the exact key.
-        Returns Memory UUID if exactly one match.
+        Returns canonical Memory UUID if exactly one match.
         Returns None if no match.
         Raises if multiple matches (duplicate key — fails closed).
+
+        Memory server lacks exact key lookup. Search doesn't index UUID keys
+        reliably. Use large limit, then filter client-side. Falls back to
+        direct UUID fetch for ch:ko:{uuid} keys.
+
+        Returns canonical_id (stable across versions), not version-specific id.
         """
-        resp = self._post("/api/graph/search", {
-            "query": key,
-            "projectId": self.project_id,
-            "limit": 10,
-            "offset": 0,
-        })
-        matches = [
-            item["object"] for item in resp.get("data", [])
-            if item.get("object", {}).get("key") == key
-        ]
+        # Paginate search until exact key match or exhausted
+        matches = []
+        for offset in range(0, 2000, 200):
+            resp = self._post("/api/graph/search", {
+                "query": key,
+                "projectId": self.project_id,
+                "limit": 200,
+                "offset": offset,
+            })
+            page_matches = [
+                item["object"] for item in resp.get("data", [])
+                if item.get("object", {}).get("key") == key
+            ]
+            if page_matches:
+                matches = page_matches
+                break
+            if len(resp.get("data", [])) == 0:
+                break  # No more results
         if len(matches) == 0:
+            # Fallback 1: scan _created_ids for matching key (covers indexing delay)
+            for cid in self._created_ids:
+                try:
+                    obj = self._get(f"/api/graph/objects/{cid}")
+                    if obj.get("key") == key:
+                        return obj.get("canonical_id", obj.get("id"))
+                except (requests.HTTPError, KeyError):
+                    continue
+            # Fallback 2: for ch:ko:{uuid} / ch:proposal:{uuid} keys, try direct UUID fetch
+            if key.startswith("ch:ko:"):
+                prefix_len = 6
+            elif key.startswith("ch:proposal:"):
+                prefix_len = 12
+            else:
+                prefix_len = None
+            if prefix_len is not None:
+                ch_id = key[prefix_len:]
+                try:
+                    uuid.UUID(ch_id)
+                    obj = self._get(f"/api/graph/objects/{ch_id}")
+                    obj_key = obj.get("key", "")
+                    if obj_key == key:
+                        return obj.get("canonical_id", obj.get("id"))
+                except (ValueError, requests.HTTPError):
+                    pass
             return None
         if len(matches) > 1:
-            uuids = [m.get("id") for m in matches]
+            uuids = [m.get("canonical_id", m.get("id")) for m in matches]
             raise RuntimeError(
                 f"Duplicate key '{key}' found for {len(matches)} entities "
                 f"(UUIDs: {uuids}). Identity resolution fails closed."
             )
-        return matches[0].get("id")
+        # Return canonical_id (stable across versions)
+        return matches[0].get("canonical_id", matches[0].get("id"))
 
     # ── HTTP helpers ──────────────────────────────────────────────────
 
@@ -484,6 +632,7 @@ class MemoryAdapter(StorageInterface):
     def create_ko(self, ko: KnowledgeObject) -> str:
         mem_obj = ko_to_memory_object(ko)
         mem_obj["projectId"] = self.project_id
+        mem_obj["key"] = self._ch_key(ko.id)
         result = self._post("/api/graph/objects", mem_obj)
         mem_uuid = result["id"]
         self._created_ids.add(mem_uuid)
@@ -491,6 +640,31 @@ class MemoryAdapter(StorageInterface):
         # Record identity mapping (v0.6.4)
         self._ko_id_map[ko.id] = mem_uuid
         self._memory_id_map[mem_uuid] = ko.id
+
+        # Persist a deterministic lookup object mapping CH-ID → Memory UUID.
+        # Memory server lacks exact key lookup and doesn't index UUID keys
+        # reliably. The lookup key uses a textual prefix (ch:lookup:) that IS
+        # indexed, enabling search-based recovery after process restart.
+        lookup_key = f"ch:lookup:{ko.id}"
+        lookup_obj = {
+            "type": "Concept",
+            "key": lookup_key,
+            "projectId": self.project_id,
+            "properties": {
+                "title": f"ch:lookup:{ko.id}",
+                "ch_memory_uuid": mem_uuid,
+                "ch_lookup_for": ko.id,
+            },
+        }
+        try:
+            lookup_result = self._post("/api/graph/objects", lookup_obj)
+            self._created_ids.add(lookup_result["id"])
+        except requests.HTTPError as e:
+            code = e.response.status_code if e.response is not None else None
+            raise RuntimeError(
+                f"Failed to persist lookup for KO {ko.id} "
+                f"(Memory UUID {mem_uuid}): HTTP {code}"
+            ) from e
 
         # Store relations as edges (resolve CH IDs to Memory UUIDs)
         for rel in ko.relations:
@@ -683,6 +857,9 @@ class MemoryAdapter(StorageInterface):
                 props["content"] = v
             elif k == "evidence_ids":
                 props["ch_evidence_ids"] = v
+            elif k == "validators":
+                # Map validators list to ch_validators for Memory storage
+                props["ch_validators"] = v
             else:
                 props[k] = v
 
@@ -710,9 +887,11 @@ class MemoryAdapter(StorageInterface):
         try:
             obj = self._get(f"/api/graph/objects/{mem_uuid}")
         except requests.HTTPError as e:
-            if e.response and e.response.status_code == 404:
+            # Note: Response.__bool__ is False for >= 400, so use "is not None"
+            code = e.response.status_code if e.response is not None else None
+            if code == 404:
                 return None
-            if e.response and e.response.status_code == 400:
+            if code == 400:
                 # 400 means the server rejected the ID — not a valid UUID
                 return None
             raise
@@ -870,6 +1049,9 @@ class MemoryAdapter(StorageInterface):
 
             # For each key, search to find the object
             for key in seen_keys:
+                # Skip internal lookup objects — not CH KnowledgeObjects
+                if self._is_lookup_key(key):
+                    continue
                 search_resp = self._post("/api/graph/search", {
                     "query": key,
                     "projectId": self.project_id,
@@ -893,8 +1075,22 @@ class MemoryAdapter(StorageInterface):
     def _list_all_via_broad_search(self) -> list[KnowledgeObject]:
         """Search with common prefixes to find objects not tracked by journal."""
         kos = []
+        seen_ids = set()
+        def add_if_new(obj):
+            oid = obj.get("id", "")
+            key = obj.get("key", "")
+            if not oid or oid in seen_ids:
+                return
+            # Skip internal lookup objects
+            if self._is_lookup_key(key):
+                return
+            seen_ids.add(oid)
+            kos.append(memory_object_to_ko(obj))
+
         # Search for common key prefixes used by this adapter
         prefixes = ["ch:ko:", "admin:", "Concept"]
+        # Explicitly exclude ch:lookup: — those are internal mapping objects
+        lookup_prefix = "ch:lookup:"
         for prefix in prefixes:
             search_resp = self._post("/api/graph/search", {
                 "query": prefix,
@@ -903,8 +1099,20 @@ class MemoryAdapter(StorageInterface):
                 "offset": 0,
             })
             for item in search_resp.get("data", []):
-                obj = item.get("object", item)
-                kos.append(memory_object_to_ko(obj))
+                add_if_new(item.get("object", item))
+
+        # Also query KnowledgeObject type directly via entity endpoint
+        try:
+            resp = self._post("/api/graph/query", {
+                "type_name": "KnowledgeObject",
+                "limit": 200,
+                "offset": 0,
+            })
+            for item in resp.get("entities", []):
+                add_if_new(item)
+        except Exception:
+            pass
+
         return kos
 
     def query_by_viewpoint(self, viewpoint_id: str) -> list[KnowledgeObject]:
@@ -972,60 +1180,98 @@ class MemoryAdapter(StorageInterface):
     # ── Evidence ──────────────────────────────────────────────────────
 
     def add_evidence(self, evidence_id: str, claim_id: str, status: str,
-                     observation: str, records: list[dict]) -> str:
+                     observation: str, records: list[dict],
+                     source_ko_id: str | None = None,
+                     relation_type: str = "supports") -> str:
+        if relation_type not in ("supports", "contradicts"):
+            raise ValueError(f"Invalid evidence relation_type: {relation_type!r}")
         ev = {
             "id": evidence_id,
             "claim_id": claim_id,
             "status": status,
             "observation": observation,
             "records": records,
+            "relation_type": relation_type,
         }
-        self._evidence[evidence_id] = ev
+        if source_ko_id is not None:
+            ev["source_ko_id"] = source_ko_id
 
-        # Create evidence as a Memory object with SUPPORTS relation to claim
+        # Determine edge type from relation_type
+        edge_type = RelationType.SUPPORTS.value
+        if relation_type == "contradicts":
+            edge_type = RelationType.CONTRADICTS.value
+
+        # Create evidence as a Memory object
         ev_ko = KnowledgeObject(
             id=evidence_id,
             type=KOType.EVIDENCE_ITEM,
             title=f"Evidence for {claim_id}",
-            content={"status": status, "observation": observation, "records": records},
+            content=dict(ev),
             provenance=Provenance(source="evidence", author="system"),
         )
-        mem_obj = ko_to_memory_object(ev_ko)
-        mem_obj["projectId"] = self.project_id
-        self._post("/api/graph/objects", mem_obj)
-        self._created_ids.add(evidence_id)
+        ev_mem_uuid = self.create_ko(ev_ko)
 
-        # Link to claim via SUPPORTS relation
-        self._create_edge(evidence_id, claim_id, RelationType.SUPPORTS.value)
+        # Link to claim via edge — must use Memory UUIDs
+        claim_uuid = self._resolve_ch_id(claim_id)
+        if not self._create_edge(ev_mem_uuid, claim_uuid, edge_type):
+            raise RuntimeError(
+                f"Failed to create {edge_type} edge {ev_mem_uuid} -> {claim_uuid}: "
+                "evidence registered but graph link missing"
+            )
 
         # Update claim's evidence_ids
         claim = self.get_ko(claim_id)
         if claim and evidence_id not in claim.evidence_ids:
             self.update_ko(claim_id, {"evidence_ids": claim.evidence_ids + [evidence_id]})
 
+        self._evidence[evidence_id] = ev
         return evidence_id
+
+    def delete_ko(self, ko_id: str) -> None:
+        """Soft-delete a KO via Memory's delete endpoint."""
+        mem_uuid = self._resolve_ch_id(ko_id)
+        self._delete(f"/api/graph/objects/{mem_uuid}")
+        self._created_ids.discard(mem_uuid)
+        self._ko_id_map.pop(ko_id, None)
+        self._memory_id_map.pop(mem_uuid, None)
 
     def get_evidence(self, evidence_id: str) -> dict | None:
         if evidence_id in self._evidence:
             return self._evidence[evidence_id]
-        # Try fetching from Memory
-        try:
-            obj = self._get(f"/api/graph/objects/{evidence_id}")
-            props = obj.get("properties", {})
-            if props.get("ch_ko_type") == KOType.EVIDENCE_ITEM.value:
-                return {
-                    "id": evidence_id,
-                    "claim_id": props.get("content", {}).get("claim_id", ""),
-                    "status": props.get("content", {}).get("status", ""),
-                    "observation": props.get("content", {}).get("observation", ""),
-                    "records": props.get("content", {}).get("records", []),
-                }
-        except requests.HTTPError:
-            pass
-        return None
+        ko = self.get_ko(evidence_id)
+        if ko is None or ko.type != KOType.EVIDENCE_ITEM:
+            return None
+        content = ko.content if isinstance(ko.content, dict) else {}
+        # Older evidence objects omitted claim_id; recover it from the graph.
+        edge = next((r for r in ko.relations if r.type in
+                     (RelationType.SUPPORTS, RelationType.CONTRADICTS)), None)
+        ev = {
+            "id": ko.id,
+            "claim_id": content.get("claim_id") or (edge.to if edge else ""),
+            "status": content.get("status", ""),
+            "observation": content.get("observation", ""),
+            "records": content.get("records", []),
+            "relation_type": content.get("relation_type") or
+                             (edge.type.value if edge else "supports"),
+        }
+        if "source_ko_id" in content:
+            ev["source_ko_id"] = content["source_ko_id"]
+        self._evidence[ko.id] = ev
+        return ev
 
     def list_evidence_for_ko(self, ko_id: str) -> list[dict]:
-        return [ev for ev in self._evidence.values() if ev["claim_id"] == ko_id]
+        claim = self.get_ko(ko_id)
+        if claim is None:
+            return []
+        evidence_ids = list(claim.evidence_ids)
+        evidence_ids.extend(src for src, _ in self.get_incoming_relations(
+            claim.id, frozenset({RelationType.SUPPORTS, RelationType.CONTRADICTS})))
+        result = []
+        for evidence_id in dict.fromkeys(evidence_ids):
+            ev = self.get_evidence(evidence_id)
+            if ev is not None and ev["claim_id"] == claim.id:
+                result.append(ev)
+        return result
 
     # ── Locking (no-op per STORAGE.md) ────────────────────────────────
 
@@ -1123,18 +1369,7 @@ class MemoryAdapter(StorageInterface):
             "type": "Concept",
             "key": f"ch:proposal:{proposal.id}",
             "projectId": self.project_id,
-            "properties": {
-                "ch_proposal_type": proposal.type.value if hasattr(proposal.type, 'value') else str(proposal.type),
-                "ch_proposal_state": proposal.state.value if hasattr(proposal.state, 'value') else str(proposal.state),
-                "ch_proposal_proposer": proposal.proposer,
-                "ch_proposal_rationale": proposal.rationale,
-                "ch_proposal_target_ko_id": proposal.target_ko_id,
-                "ch_proposal_ko_type": proposal.ko_type.value if proposal.ko_type and hasattr(proposal.ko_type, 'value') else str(proposal.ko_type) if proposal.ko_type else "",
-                "ch_proposal_ko_title": proposal.ko_title,
-                "ch_proposal_ko_content": str(proposal.ko_content) if proposal.ko_content else "",
-                "ch_proposal_rejection_reason": proposal.rejection_reason,
-                "ch_proposal_created_ko_id": proposal.created_ko_id,
-            },
+            "properties": proposal_to_properties(proposal),
         }
         try:
             result = self._post("/api/graph/objects", proposal_obj)
@@ -1160,21 +1395,7 @@ class MemoryAdapter(StorageInterface):
             if mem_uuid:
                 obj = self._get(f"/api/graph/objects/{mem_uuid}")
                 props = obj.get("properties", {})
-                p_type = ProposalType(props.get("ch_proposal_type", "create_ko"))
-                p = Proposal(
-                    id=proposal_id,
-                    type=p_type,
-                    proposer=props.get("ch_proposal_proposer", ""),
-                    rationale=props.get("ch_proposal_rationale", ""),
-                    state=ProposalState(props.get("ch_proposal_state", "pending")),
-                    rejection_reason=props.get("ch_proposal_rejection_reason", ""),
-                )
-                # Restore type-specific fields
-                if p_type == ProposalType.CREATE_KO:
-                    p.ko_title = props.get("ch_proposal_ko_title", "")
-                    p.ko_content = props.get("ch_proposal_ko_content")
-                elif p_type in (ProposalType.UPDATE_KO, ProposalType.TRANSITION_STATUS):
-                    p.target_ko_id = props.get("ch_proposal_target_ko_id", "")
+                p = proposal_from_properties(proposal_id, props)
                 self._proposals[p.id] = p
             else:
                 raise ValueError(f"Proposal {proposal_id} not found")
@@ -1194,14 +1415,19 @@ class MemoryAdapter(StorageInterface):
                 ko_type = p.ko_type or KOType.REQUIREMENT
                 if hasattr(ko_type, 'value'):
                     ko_type = KOType(ko_type)
-                ko = KnowledgeObject(
+                ko_kwargs = dict(
                     type=ko_type,
                     title=p.ko_title,
                     content=p.ko_content,
                     scope=p.ko_scope,
                     assumptions=p.ko_assumptions,
                     confidence=p.ko_confidence,
+                    valid_from=p.ko_valid_from,
+                    valid_to=p.ko_valid_to,
                 )
+                if p.ko_truth_category is not None:
+                    ko_kwargs["truth_category"] = p.ko_truth_category
+                ko = KnowledgeObject(**ko_kwargs)
                 if p.ko_viewpoints:
                     ko.viewpoint_ids = p.ko_viewpoints
                 mem_uuid = self.create_ko(ko)
@@ -1253,7 +1479,8 @@ class MemoryAdapter(StorageInterface):
                 if p.evidence_claim_id:
                     ev_id = self.add_evidence(
                         f"ev-{proposal_id}", p.evidence_claim_id,
-                        "submitted", p.evidence_observation, p.evidence_records
+                        "submitted", p.evidence_observation, p.evidence_records,
+                        relation_type=p.evidence_relation_type,
                     )
                     p.created_evidence_id = ev_id
                     p.state = ProposalState.ACCEPTED
@@ -1274,11 +1501,7 @@ class MemoryAdapter(StorageInterface):
             wrapper_uuid = self._lookup_by_key(f"ch:proposal:{proposal_id}")
             if wrapper_uuid:
                 self._patch(f"/api/graph/objects/{wrapper_uuid}", {
-                    "properties": {
-                        "ch_proposal_state": p.state.value if hasattr(p.state, 'value') else str(p.state),
-                        "ch_proposal_rejection_reason": p.rejection_reason,
-                        "ch_proposal_created_ko_id": p.created_ko_id,
-                    }
+                    "properties": proposal_to_properties(p),
                 })
         except Exception:
             pass
