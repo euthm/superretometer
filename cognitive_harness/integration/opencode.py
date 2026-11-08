@@ -28,6 +28,17 @@ COUPLING POINT:
     The injector returns a (preamble: str, report: ValidationReport) tuple.
     The caller (OpenCode agent, subagent, or CLI) prepends the preamble to
     the session system prompt.  No bidirectional coupling exists.
+
+TOKEN BUDGET:
+    Token counts are estimates (CharProxyEstimator: len(text) // 4).
+    The budget check covers the checkpoint context injection ONLY.
+    The caller must ensure the full request fits:
+        total ≤ context_window
+        where total = system_prompt + checkpoint_context + recent_messages
+            + mcp_tool_descriptions + reply_reserve
+
+    For hard token budgets, integrate a model-specific tokenizer
+    (e.g., tiktoken for OpenAI models, gemini tokenizer for Google).
 """
 from __future__ import annotations
 

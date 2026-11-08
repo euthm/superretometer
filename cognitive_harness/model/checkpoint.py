@@ -12,6 +12,12 @@ Identity model:
     content_hash  — SHA-256 over canonical JSON (excludes checkpoint_id).
     These are independent: the ID locates the file, the hash verifies integrity.
 
+Token estimation:
+    estimated_tokens() renders the full context via CheckpointManager,
+    then applies the configured TokenEstimator.  The default is a
+    4-char proxy (upper-bound).  Production deployments should pass a
+    model-specific estimator (e.g., tiktoken) to get hard token counts.
+
 Format is stabilised at version 2.  Backward compatible with v1 for
 the fields listed in CHECKPOINT_SCHEMA_V1.
 """
@@ -22,7 +28,7 @@ import json
 import secrets
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 
 # Canonical field list — validators and serializers depend on this order.
@@ -52,6 +58,34 @@ CHECKPOINT_SCHEMA: list[str] = [
 MANDATORY_FIELDS: frozenset[str] = frozenset({
     "project_id", "project_name", "repo", "sha", "goals",
 })
+
+
+class TokenEstimator(Protocol):
+    """Estimate token count for a text string.
+
+    Implementations:
+        CharProxyEstimator  — len(text) // 4 (upper-bound, default)
+        TiktokenEstimator   — model-specific (hard count)
+    """
+
+    def estimate(self, text: str) -> int: ...
+
+    @property
+    def is_exact(self) -> bool: ...
+
+
+class CharProxyEstimator:
+    """Rough upper-bound: 4 chars ≈ 1 token.
+
+    This is NOT a model tokenizer.  It over-counts relative to most
+    models (GPT, Gemini, Claude), so it is safe as a conservative
+    budget gate.  Mark clearly as estimated.
+    """
+
+    is_exact = False
+
+    def estimate(self, text: str) -> int:
+        return max(1, len(text) // 4)
 
 
 class CheckpointIntegrityError(Exception):
@@ -139,7 +173,6 @@ class Checkpoint:
             self.checkpoint_id = secrets.token_hex(8)
         if not self.timestamp:
             self.timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        # Compute content_hash if not set
         if not self.content_hash:
             self.content_hash = self._compute_content_hash()
 
@@ -207,18 +240,39 @@ class Checkpoint:
             )
         return True
 
-    def estimated_tokens(self) -> int:
-        """Rough token estimate of the rendered restore context (4 chars ≈ 1 token).
+    # ── Token estimation ───────────────────────────────────────────────
 
-        Uses the serialised checkpoint JSON as proxy for context size.
+    def estimated_tokens(
+        self,
+        estimator: TokenEstimator | None = None,
+    ) -> int:
+        """Estimate token count of the full rendered context.
+
+        Renders the context via CheckpointManager (avoiding circular import),
+        then applies the given TokenEstimator.  Default: CharProxyEstimator.
+
+        Returns int: estimated tokens for the rendered context string.
         """
-        return len(self.to_json()) // 4
+        if estimator is None:
+            estimator = CharProxyEstimator()
+        # Lazy import to avoid circular dependency
+        from cognitive_harness.orchestration.checkpoint_manager import (
+            CheckpointManager,
+        )
+        mgr = CheckpointManager()
+        context = mgr.generate_restore_context(self)
+        return estimator.estimate(context)
 
-    def mandatory_token_estimate(self) -> int:
-        """Token estimate of mandatory fields only.
+    def mandatory_token_estimate(
+        self,
+        estimator: TokenEstimator | None = None,
+    ) -> int:
+        """Token estimate of mandatory fields only (no rendering overhead).
 
         Used by the budget gate: if even mandatory content exceeds budget,
         restore is blocked (no compaction fallback can help).
         """
+        if estimator is None:
+            estimator = CharProxyEstimator()
         mandatory = {k: getattr(self, k, None) for k in MANDATORY_FIELDS}
-        return len(json.dumps(mandatory, sort_keys=True)) // 4
+        return estimator.estimate(json.dumps(mandatory, sort_keys=True))

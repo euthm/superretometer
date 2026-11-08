@@ -170,6 +170,11 @@ class CheckpointManager:
         first.  If they exceed the budget, CheckpointBudgetError is raised
         (no compaction fallback can help).
 
+        IMPORTANT: Token counts are estimates (4-char proxy by default).
+        This budget check only covers the checkpoint context injection —
+        NOT the full request (system prompt, MCP tools, recent messages,
+        reply reserve).  The caller must ensure the total request fits.
+
         Args:
             cp: The checkpoint to render.
             budget_tokens: Optional token budget.  If None, no gate check.
@@ -184,8 +189,8 @@ class CheckpointManager:
             mandatory_tokens = cp.mandatory_token_estimate()
             if mandatory_tokens > budget_tokens:
                 raise CheckpointBudgetError(
-                    f"Mandatory content ({mandatory_tokens} tokens) exceeds "
-                    f"budget ({budget_tokens} tokens).  Restore blocked."
+                    f"Mandatory content ({mandatory_tokens} tokens, estimated) "
+                    f"exceeds budget ({budget_tokens} tokens).  Restore blocked."
                 )
 
         lines = [

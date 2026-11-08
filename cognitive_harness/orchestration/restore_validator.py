@@ -20,7 +20,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from cognitive_harness.model.checkpoint import Checkpoint, CheckpointIntegrityError
+from cognitive_harness.model.checkpoint import (
+    Checkpoint,
+    CheckpointIntegrityError,
+    CharProxyEstimator,
+)
 
 log = logging.getLogger(__name__)
 
@@ -120,15 +124,15 @@ class RestoreValidator:
         report.results.append(self._check_project_id(cp))
         report.results.append(self._check_sha_freshness(cp))
         report.results.append(self._check_source_references(cp))
-        report.results.append(self._check_context_budget(cp))
         report.results.append(self._check_required_fields(cp))
         report.results.append(self._check_version(cp))
 
-        # Estimate token cost of generated context
+        # Render context once and check budget against rendered output
         from cognitive_harness.orchestration.checkpoint_manager import CheckpointManager
         mgr = CheckpointManager()
         context = mgr.generate_restore_context(cp)
-        report.context_tokens = len(context) // 4
+        report.context_tokens = CharProxyEstimator().estimate(context)
+        report.results.append(self._check_context_budget(cp, context))
 
         return report
 
@@ -269,32 +273,71 @@ class RestoreValidator:
             details={"accessible": accessible},
         )
 
-    def _check_context_budget(self, cp: Checkpoint) -> ValidationResult:
-        """Check if checkpoint context fits within budget.
+    def _check_context_budget(self, cp: Checkpoint, rendered_context: str = "") -> ValidationResult:
+        """Check if the **rendered** context fits within budget.
+
+        The rendered context includes all headers, metadata, goals, decisions,
+        constraints, tasks, and source references — not just the checkpoint JSON.
 
         Budget exceeded is a WARNING, not a FAIL — the injector can compact.
         Only semantic failures (wrong project, missing fields) block restore.
+
+        NOTE: Token count is estimated via CharProxyEstimator (4-char proxy).
+        This is a conservative upper-bound, NOT a model tokenizer.  The
+        entire request (system prompt, MCP tools, recent messages, reply)
+        must also fit in the context window — this check only covers the
+        checkpoint context injection portion.
         """
-        estimated = cp.estimated_tokens()
+        estimator = CharProxyEstimator()
+        if rendered_context:
+            estimated = estimator.estimate(rendered_context)
+        else:
+            estimated = cp.estimated_tokens(estimator)
         if estimated > self.budget_tokens:
             return ValidationResult(
                 check_name="context_budget",
                 severity=Severity.WARNING,
-                message=f"Checkpoint context ({estimated} tokens) exceeds budget ({self.budget_tokens} tokens) — compaction needed",
-                details={"estimated_tokens": estimated, "budget": self.budget_tokens},
+                message=(
+                    f"Rendered context ({estimated} tokens, estimated) exceeds "
+                    f"budget ({self.budget_tokens} tokens) — compaction needed"
+                ),
+                details={
+                    "estimated_tokens": estimated,
+                    "budget": self.budget_tokens,
+                    "estimator": "char_proxy",
+                    "is_exact": False,
+                    "note": (
+                        "Estimate only (4-char proxy).  Does not account for "
+                        "system prompt, MCP tools, recent messages, or reply "
+                        "reserve.  Use model tokenizer for hard token budget."
+                    ),
+                },
             )
         if estimated > self.budget_tokens * 0.8:
             return ValidationResult(
                 check_name="context_budget",
                 severity=Severity.WARNING,
-                message=f"Checkpoint context ({estimated} tokens) is {estimated/self.budget_tokens*100:.0f}% of budget",
-                details={"estimated_tokens": estimated, "budget": self.budget_tokens},
+                message=(
+                    f"Rendered context ({estimated} tokens, estimated) is "
+                    f"{estimated / self.budget_tokens * 100:.0f}% of budget"
+                ),
+                details={
+                    "estimated_tokens": estimated,
+                    "budget": self.budget_tokens,
+                    "estimator": "char_proxy",
+                    "is_exact": False,
+                },
             )
         return ValidationResult(
             check_name="context_budget",
             severity=Severity.PASS,
-            message=f"Context fits budget: {estimated}/{self.budget_tokens} tokens",
-            details={"estimated_tokens": estimated, "budget": self.budget_tokens},
+            message=f"Rendered context fits budget: {estimated}/{self.budget_tokens} tokens (estimated)",
+            details={
+                "estimated_tokens": estimated,
+                "budget": self.budget_tokens,
+                "estimator": "char_proxy",
+                "is_exact": False,
+            },
         )
 
     def _check_required_fields(self, cp: Checkpoint) -> ValidationResult:
