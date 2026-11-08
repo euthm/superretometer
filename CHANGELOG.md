@@ -20,6 +20,9 @@ All notable changes to cognitive-harness (Superretometer).
   independent certification. Existing policy/warrant algorithms are unchanged.
 
 ### Documentation
+- Prepare #19 context-continuity review artifacts, candidate comparison profiles,
+  functional-control definitions and a read-only version/environment probe. No
+  checkpoint engine, OpenCode plugin or performance result is delivered yet.
 - Record StrategyServer as the maintainer's current external strategy workflow,
   replacing the previous local EPF workflow.
 - Clarify the boundary between external strategy/planning, Superretometer evidence
