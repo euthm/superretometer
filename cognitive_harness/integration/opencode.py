@@ -37,6 +37,7 @@ from cognitive_harness.model.checkpoint import (
     Checkpoint,
     CheckpointIntegrityError,
     CharProxyEstimator,
+    TokenEstimator,
 )
 from cognitive_harness.orchestration.checkpoint_manager import (
     CheckpointManager,
@@ -78,15 +79,17 @@ class OpenCodeContextInjector:
         expected_project_id: str = "",
         budget_tokens: int = 16_000,
         git_repo_path: str = "",
+        estimator: TokenEstimator | None = None,
     ):
         self.manager = CheckpointManager(checkpoint_dir=checkpoint_dir)
+        self.estimator = estimator or CharProxyEstimator()
         self.validator = RestoreValidator(
             expected_project_id=expected_project_id,
             budget_tokens=budget_tokens,
             git_repo_path=git_repo_path,
+            estimator=self.estimator,
         )
         self.budget_tokens = budget_tokens
-        self.estimator = CharProxyEstimator()
 
     def inject(self, checkpoint_id: str) -> tuple[str, ValidationReport]:
         """Inject checkpoint context.  Returns (preamble, report).

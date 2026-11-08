@@ -579,3 +579,133 @@ class TestSourceReference:
         assert sr.sha is None
         assert sr.line_range is None
         assert sr.description == ""
+
+
+# ── Hash Missing Check ───────────────────────────────────────────────────
+
+
+class TestHashMissing:
+    def test_missing_hash_rejected(self):
+        """A checkpoint loaded from JSON without content_hash is rejected."""
+        d = {
+            "project_id": "test-123",
+            "sha": "abc123",
+            "repo": "/test",
+            "content_hash": "",  # missing
+        }
+        cp = Checkpoint.from_dict(d)
+        validator = RestoreValidator()
+        report = validator.validate(cp)
+        hash_results = [r for r in report.results if r.check_name == "hash_present"]
+        assert hash_results[0].severity == Severity.FAIL
+        assert report.has_failures
+
+    def test_missing_hash_key_rejected(self):
+        """A checkpoint loaded from JSON without content_hash key is rejected."""
+        d = {
+            "project_id": "test-123",
+            "sha": "abc123",
+            "repo": "/test",
+            # no content_hash key at all
+        }
+        cp = Checkpoint.from_dict(d)
+        validator = RestoreValidator()
+        report = validator.validate(cp)
+        hash_results = [r for r in report.results if r.check_name == "hash_present"]
+        assert hash_results[0].severity == Severity.FAIL
+
+    def test_present_hash_accepted(self):
+        """A checkpoint with a valid content_hash passes the hash_present check."""
+        cp = Checkpoint(
+            project_id="test-123",
+            sha="abc123",
+            repo="/test",
+            goals=["g"],
+        )
+        # Save and reload (hash present in source)
+        import tempfile
+        from cognitive_harness.orchestration.checkpoint_manager import CheckpointManager
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = CheckpointManager(checkpoint_dir=Path(tmp))
+            mgr._save(cp)
+            loaded = mgr.load(cp.checkpoint_id)
+            validator = RestoreValidator()
+            report = validator.validate(loaded)
+            hash_results = [r for r in report.results if r.check_name == "hash_present"]
+            assert hash_results[0].severity == Severity.PASS
+
+
+# ── Custom Estimator ──────────────────────────────────────────────────────
+
+
+class TestCustomEstimator:
+    def test_validator_uses_custom_estimator(self, sample_checkpoint: Checkpoint):
+        """A custom estimator is used by the validator for budget checks."""
+        class StrictEstimator:
+            is_exact = False
+            def estimate(self, text: str) -> int:
+                # 2 chars per token — much stricter than default
+                return max(1, len(text) // 2)
+
+        validator = RestoreValidator(
+            budget_tokens=100,
+            estimator=StrictEstimator(),
+        )
+        report = validator.validate(sample_checkpoint)
+        budget_results = [r for r in report.results if r.check_name == "context_budget"]
+        assert budget_results[0].severity == Severity.WARNING
+        assert report.context_tokens > 100
+
+    def test_injector_uses_custom_estimator(self, tmp_checkpoint_dir: Path):
+        """The injector propagates a custom estimator through all stages."""
+        from cognitive_harness.integration.opencode import OpenCodeContextInjector
+
+        class StrictEstimator:
+            is_exact = False
+            def estimate(self, text: str) -> int:
+                return max(1, len(text) // 2)
+
+        injector = OpenCodeContextInjector(
+            checkpoint_dir=tmp_checkpoint_dir,
+            expected_project_id="est-test",
+            budget_tokens=500,
+            estimator=StrictEstimator(),
+        )
+        cp = injector.manager.create_checkpoint(
+            project_id="est-test",
+            project_name="test",
+            repo="/tmp", branch="main", sha="abc123",
+            goals=["Goal"],
+        )
+        preamble, report = injector.inject(cp.checkpoint_id)
+        assert "CONTEXT RESTORED" in preamble
+
+    def test_custom_estimator_affects_compaction(self, tmp_checkpoint_dir: Path):
+        """A stricter estimator forces compaction at higher budget."""
+        from cognitive_harness.integration.opencode import OpenCodeContextInjector
+
+        class StrictEstimator:
+            is_exact = False
+            def estimate(self, text: str) -> int:
+                return max(1, len(text) // 2)
+
+        injector = OpenCodeContextInjector(
+            checkpoint_dir=tmp_checkpoint_dir,
+            expected_project_id="compact-est",
+            budget_tokens=200,
+            estimator=StrictEstimator(),
+        )
+        cp = injector.manager.create_checkpoint(
+            project_id="compact-est",
+            project_name="ce",
+            repo="/tmp", branch="main", sha="abc",
+            goals=["G1"],
+            constraints=["C1"],
+            last_user_message="Message",
+            active_tool_actions=[{"tool": "t", "status": "s"}],
+            decisions={f"d{i}": {"outcome": f"x{i}", "rationale": "r" * 30} for i in range(10)},
+            open_tasks=[{"task_id": f"t{i}", "description": "d" * 20, "status": "open"} for i in range(10)],
+        )
+        preamble, _ = injector.inject(cp.checkpoint_id)
+        est = StrictEstimator()
+        assert est.estimate(preamble) <= 200

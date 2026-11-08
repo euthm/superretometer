@@ -169,6 +169,11 @@ class Checkpoint:
         refs = [SourceReference.from_dict(r) for r in raw_refs if isinstance(r, dict)]
         cp = cls(**{k: v for k, v in d.items() if k in CHECKPOINT_SCHEMA})
         cp.source_references = refs
+        # Track whether the source had a content_hash
+        if not d.get("content_hash"):
+            cp._hash_missing_in_source = True
+        else:
+            cp._hash_missing_in_source = False
         return cp
 
     def _compute_content_hash(self) -> str:
