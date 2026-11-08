@@ -5,6 +5,7 @@ Usage:
     superretometer --version
     superretometer --help
     superretometer mcp
+    superretometer evidence ...
     superretometer checkpoint create [OPTIONS]
     superretometer checkpoint list [OPTIONS]
     superretometer checkpoint restore CHECKPOINT_ID [OPTIONS]
@@ -32,7 +33,21 @@ from cognitive_harness.orchestration.restore_validator import (
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="superretometer")
+    # Evidence is delegated to its own CLI — dispatch before argparse
+    # so sub-commands like `evidence record --help` reach the evidence parser.
+    if sys.argv[1:2] == ["evidence"]:
+        from cognitive_harness.evidence.cli import main as evidence_main
+        sys.exit(evidence_main(sys.argv[2:]))
+
+    parser = argparse.ArgumentParser(
+        prog="superretometer",
+        description=(
+            "Commands:\n"
+            "  evidence  Portable test evidence workflow\n"
+            "  mcp       Start the MCP server on stdin/stdout\n"
+            "  checkpoint Checkpoint management"
+        ),
+    )
     parser.add_argument("--version", action="version", version=__version__)
 
     sub = parser.add_subparsers(dest="command")
@@ -107,7 +122,17 @@ def main():
         return
 
     # No command — show help
-    parser.print_help()
+    print("Usage: superretometer [COMMAND] [OPTIONS]")
+    print()
+    print("Commands:")
+    print("  evidence  Portable test evidence workflow")
+    print("  mcp       Start the MCP server on stdin/stdout")
+    print("  checkpoint Checkpoint management")
+    print()
+    print("Options:")
+    print("  --version Print version and exit")
+    print("  --help    Show this help message")
+    print()
     sys.exit(0)
 
 
@@ -199,14 +224,12 @@ def _do_restore(mgr: CheckpointManager, args) -> None:
     project_id = args.project_id
     repo_path = args.repo_path
 
-    # Load and verify integrity
     try:
         cp = mgr.load(checkpoint_id)
     except Exception as e:
         print(f"# ERROR: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Validate
     validator = RestoreValidator(
         expected_project_id=project_id,
         budget_tokens=budget,
@@ -214,7 +237,6 @@ def _do_restore(mgr: CheckpointManager, args) -> None:
     )
     report = validator.validate(cp)
 
-    # Print validation report
     print(json.dumps({
         "checkpoint_id": cp.checkpoint_id,
         "content_hash": cp.content_hash[:16],
@@ -228,7 +250,6 @@ def _do_restore(mgr: CheckpointManager, args) -> None:
         print("\n# RESTORE BLOCKED: validation failures", file=sys.stderr)
         sys.exit(2)
 
-    # Generate context
     try:
         context = mgr.generate_restore_context(cp, budget_tokens=budget)
     except CheckpointBudgetError as e:
@@ -236,7 +257,6 @@ def _do_restore(mgr: CheckpointManager, args) -> None:
         sys.exit(3)
 
     if args.subcommand == "inject":
-        # Output preamble
         preamble = (
             f"# CONTEXT RESTORED FROM CHECKPOINT\n"
             f"Checkpoint ID: {cp.checkpoint_id}\n"
@@ -247,7 +267,6 @@ def _do_restore(mgr: CheckpointManager, args) -> None:
         print()
         print(preamble)
     else:
-        # Output rendered context
         print("\n--- RENDERED CONTEXT ---\n")
         print(context)
 

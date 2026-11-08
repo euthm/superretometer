@@ -125,7 +125,6 @@ class RestoreValidator:
         )
 
         report.results.append(self._check_integrity(cp))
-        report.results.append(self._check_hash_present(cp))
         report.results.append(self._check_project_id(cp))
         report.results.append(self._check_sha_freshness(cp))
         report.results.append(self._check_source_references(cp))
@@ -340,31 +339,6 @@ class RestoreValidator:
             check_name="required_fields",
             severity=Severity.PASS,
             message="All required fields present",
-        )
-
-    def _check_hash_present(self, cp: Checkpoint) -> ValidationResult:
-        """Reject checkpoints that were modified without updating the hash.
-
-        If content_hash was missing in the source file (when deserialised via
-        from_dict/from_json), the file was saved without integrity protection
-        — must be rejected.  Newly created checkpoints (not loaded from disk)
-        are exempt.
-        """
-        if getattr(cp, "_hash_missing_in_source", False):
-            return ValidationResult(
-                check_name="hash_present",
-                severity=Severity.FAIL,
-                message=(
-                    "Checkpoint content_hash was missing — "
-                    "file was modified without integrity protection"
-                ),
-                details={"checkpoint_id": cp.checkpoint_id},
-            )
-        return ValidationResult(
-            check_name="hash_present",
-            severity=Severity.PASS,
-            message="Content hash present and was not recomputed",
-            details={"checkpoint_id": cp.checkpoint_id},
         )
 
     def _check_integrity(self, cp: Checkpoint) -> ValidationResult:

@@ -585,8 +585,8 @@ class TestSourceReference:
 
 
 class TestHashMissing:
-    def test_missing_hash_rejected(self):
-        """A checkpoint loaded from JSON without content_hash is rejected."""
+    def test_missing_hash_rejected_by_integrity(self):
+        """A checkpoint loaded from JSON without content_hash fails verify_integrity()."""
         d = {
             "project_id": "test-123",
             "sha": "abc123",
@@ -594,14 +594,11 @@ class TestHashMissing:
             "content_hash": "",  # missing
         }
         cp = Checkpoint.from_dict(d)
-        validator = RestoreValidator()
-        report = validator.validate(cp)
-        hash_results = [r for r in report.results if r.check_name == "hash_present"]
-        assert hash_results[0].severity == Severity.FAIL
-        assert report.has_failures
+        with pytest.raises(CheckpointIntegrityError, match="missing content_hash"):
+            cp.verify_integrity()
 
-    def test_missing_hash_key_rejected(self):
-        """A checkpoint loaded from JSON without content_hash key is rejected."""
+    def test_missing_hash_key_rejected_by_integrity(self):
+        """A checkpoint loaded from JSON without content_hash key fails verify_integrity()."""
         d = {
             "project_id": "test-123",
             "sha": "abc123",
@@ -609,30 +606,80 @@ class TestHashMissing:
             # no content_hash key at all
         }
         cp = Checkpoint.from_dict(d)
-        validator = RestoreValidator()
-        report = validator.validate(cp)
-        hash_results = [r for r in report.results if r.check_name == "hash_present"]
-        assert hash_results[0].severity == Severity.FAIL
+        with pytest.raises(CheckpointIntegrityError, match="missing content_hash"):
+            cp.verify_integrity()
 
     def test_present_hash_accepted(self):
-        """A checkpoint with a valid content_hash passes the hash_present check."""
+        """A checkpoint with a valid content_hash passes verify_integrity()."""
         cp = Checkpoint(
             project_id="test-123",
             sha="abc123",
             repo="/test",
             goals=["g"],
         )
-        # Save and reload (hash present in source)
         import tempfile
         from cognitive_harness.orchestration.checkpoint_manager import CheckpointManager
         with tempfile.TemporaryDirectory() as tmp:
             mgr = CheckpointManager(checkpoint_dir=Path(tmp))
             mgr._save(cp)
             loaded = mgr.load(cp.checkpoint_id)
-            validator = RestoreValidator()
-            report = validator.validate(loaded)
-            hash_results = [r for r in report.results if r.check_name == "hash_present"]
-            assert hash_results[0].severity == Severity.PASS
+            assert loaded.verify_integrity()
+
+    def test_load_rejects_missing_hash(self):
+        """CheckpointManager.load rejects a file with missing hash (calls verify_integrity)."""
+        import tempfile, json
+        from cognitive_harness.orchestration.checkpoint_manager import CheckpointManager
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = CheckpointManager(checkpoint_dir=Path(tmp))
+            cp = mgr.create_checkpoint(
+                project_id="test-123", project_name="t",
+                repo="/r", branch="b", sha="abc", goals=["g"],
+            )
+            # Tamper: remove content_hash
+            cp_file = mgr.checkpoint_dir / f"{cp.checkpoint_id}.json"
+            data = json.loads(cp_file.read_text())
+            data["content_hash"] = ""
+            cp_file.write_text(json.dumps(data))
+            with pytest.raises(CheckpointIntegrityError, match="missing content_hash"):
+                mgr.load(cp.checkpoint_id)
+
+    def test_restore_checkpoint_rejects_missing_hash(self):
+        """CheckpointManager.restore_checkpoint rejects missing hash."""
+        import tempfile, json
+        from cognitive_harness.orchestration.checkpoint_manager import CheckpointManager
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = CheckpointManager(checkpoint_dir=Path(tmp))
+            cp = mgr.create_checkpoint(
+                project_id="test-123", project_name="t",
+                repo="/r", branch="b", sha="abc", goals=["g"],
+            )
+            cp_file = mgr.checkpoint_dir / f"{cp.checkpoint_id}.json"
+            data = json.loads(cp_file.read_text())
+            data["content_hash"] = ""
+            cp_file.write_text(json.dumps(data))
+            with pytest.raises(CheckpointIntegrityError, match="missing content_hash"):
+                mgr.restore_checkpoint(cp.checkpoint_id)
+
+    def test_inject_rejects_missing_hash(self, tmp_checkpoint_dir: Path):
+        """OpenCodeContextInjector.inject rejects missing hash."""
+        from cognitive_harness.integration.opencode import (
+            OpenCodeContextInjector, ContextInjectionError,
+        )
+        import json
+        injector = OpenCodeContextInjector(
+            checkpoint_dir=tmp_checkpoint_dir,
+            expected_project_id="test-123",
+        )
+        cp = injector.manager.create_checkpoint(
+            project_id="test-123", project_name="t",
+            repo="/tmp", branch="b", sha="abc", goals=["g"],
+        )
+        cp_file = injector.manager.checkpoint_dir / f"{cp.checkpoint_id}.json"
+        data = json.loads(cp_file.read_text())
+        data["content_hash"] = ""
+        cp_file.write_text(json.dumps(data))
+        with pytest.raises(ContextInjectionError, match="missing content_hash"):
+            injector.inject(cp.checkpoint_id)
 
 
 # ── Custom Estimator ──────────────────────────────────────────────────────

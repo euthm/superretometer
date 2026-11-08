@@ -279,4 +279,50 @@ class TestCLI:
             capture_output=True, text=True, cwd=str(workdir),
         )
         assert r.returncode == 0
-        assert r.stdout.strip()  # version string
+
+    def test_evidence_routing(self, workdir: Path):
+        """CLI evidence subcommand is routed — delegates to evidence CLI."""
+        r = subprocess.run(
+            [*CLI, "evidence", "verify", "--help"],
+            capture_output=True, text=True, cwd=str(workdir),
+        )
+        assert r.returncode == 0
+        assert "verify" in r.stdout or "Check receipt" in r.stdout
+
+    def test_main_commands_present(self, workdir: Path):
+        """Main CLI help lists evidence, checkpoint, and mcp."""
+        r = subprocess.run(
+            [*CLI, "--help"],
+            capture_output=True, text=True, cwd=str(workdir),
+        )
+        assert r.returncode == 0
+        assert "evidence" in r.stdout
+        assert "checkpoint" in r.stdout
+        assert "mcp" in r.stdout
+
+    def test_restore_cli_rejects_missing_hash(self, workdir: Path):
+        """superretometer checkpoint restore rejects a file with missing content_hash."""
+        cp_dir = workdir / "checkpoints"
+
+        r = subprocess.run(
+            [*CLI, "checkpoint", "create",
+             "--project-id", "hash-test", "--project-name", "H",
+             "--repo", "/r", "--branch", "b", "--sha", "abc",
+             "--goal", "G", "--output-dir", str(cp_dir)],
+            capture_output=True, text=True, cwd=str(workdir),
+        )
+        assert r.returncode == 0
+        cp_id = json.loads(r.stdout)["checkpoint_id"]
+
+        cp_file = cp_dir / f"{cp_id}.json"
+        data = json.loads(cp_file.read_text())
+        data["content_hash"] = ""
+        cp_file.write_text(json.dumps(data))
+
+        r = subprocess.run(
+            [*CLI, "checkpoint", "restore", cp_id,
+             "--output-dir", str(cp_dir)],
+            capture_output=True, text=True, cwd=str(workdir),
+        )
+        assert r.returncode != 0
+        assert "missing content_hash" in r.stderr

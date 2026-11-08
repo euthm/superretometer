@@ -187,6 +187,17 @@ class Checkpoint:
         return self.content_hash
 
     def verify_integrity(self) -> bool:
+        """Verify content_hash against computed hash.
+
+        Rejects checkpoints where content_hash was missing in the source
+        file (i.e., the file was modified without integrity protection).
+        Raises CheckpointIntegrityError on failure.
+        """
+        if getattr(self, "_hash_missing_in_source", False):
+            raise CheckpointIntegrityError(
+                f"Checkpoint {self.checkpoint_id} missing content_hash in source — "
+                f"file was modified without integrity protection"
+            )
         computed = self._compute_content_hash()
         if computed != self.content_hash:
             raise CheckpointIntegrityError(
