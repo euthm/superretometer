@@ -1,0 +1,37 @@
+{
+  "schema_version": "context-pilot-profiles/v1",
+  "status": "proposed-not-applied",
+  "experimental_settings_are_not_measured_optima": true,
+  "profiles": {
+    "A": {"strategy": "current-opencode", "sessions": 1, "context_tokens": null, "transition_tokens": null},
+    "B": {"strategy": "opencode-summary", "sessions": 1, "context_tokens": 65536, "transition_tokens": 49152},
+    "C": {"strategy": "hybrid-ch-recent", "sessions": 1, "context_tokens": 65536, "transition_tokens": 49152},
+    "D": {"strategy": "opencode-summary", "sessions": 2, "context_tokens": 65536, "transition_tokens": 49152},
+    "E": {"strategy": "hybrid-ch-recent", "sessions": 2, "context_tokens": 65536, "transition_tokens": 49152}
+  },
+  "candidate_request_budget": {
+    "output_reserve_tokens": 8192,
+    "ch_pack_max_tokens": 4096,
+    "recent_turn_target_tokens": 12288,
+    "system_tokens": null,
+    "tool_schema_tokens": null,
+    "active_sources_and_results_tokens": null,
+    "tokenizer_id": null,
+    "rule": "system + schemas + pack + recent + active source/results + output reserve <= effective per-slot limit; unknown components prevent declaring budget compliance"
+  },
+  "alternative_context_tokens": 98304,
+  "alternative_policy": "Predeclare a separate 96K cohort when measured mandatory overhead cannot fit 64K; never silently change a paired trial",
+  "background_compaction": false,
+  "background_policy": "Later separately labeled experiment; count unused summary work and accelerator competition",
+  "concurrency_prerequisites": ["single-session functional controls pass", "effective per-slot limit observed", "two server slots verified", "KV/device-memory capacity observed", "separate worktrees and task/session identities", "available latency/token instrumentation"],
+  "performance_criteria_proposed_for_review": {
+    "mandatory_functional_controls": "all pass in every valid trial; no cross-scope leakage, lost constraints or unsafe writes",
+    "paired_trials_per_task": 3,
+    "minimum_task_types": 3,
+    "median_wall_clock_ratio_max": 0.85,
+    "median_total_tokens_ratio_max": 0.8,
+    "per_task_median_wall_clock_regression_max": 1.1,
+    "pairs": [["B", "C"], ["D", "E"]],
+    "limits": "Small local pilot, not statistical certification. Missing token/timing data yields inconclusive performance, not zero cost. Freeze criteria before model runs."
+  }
+}

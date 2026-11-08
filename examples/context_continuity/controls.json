@@ -1,0 +1,22 @@
+{
+  "schema_version": "context-controls/v1",
+  "status": "test-definitions-only-not-executed",
+  "fixture_scope": "synthetic tenant/project/repository/worktree/task/session identities; no production project or HRRM claims",
+  "controls": [
+    {"id": "CTX-01", "action": "Restore after fresh process with no cache", "expected": "Original objective, acceptance, source steering IDs, code fingerprints, pending jobs, next action and receipt hashes are preserved"},
+    {"id": "CTX-02", "action": "Apply a newer user instruction after checkpoint", "expected": "Old checkpoint is marked stale; new authoritative steering is retained with its source; document text never overrides it"},
+    {"id": "CTX-03", "action": "Resume after a documented failed approach", "expected": "Failure/error source is available and the prohibited repeat is not attempted"},
+    {"id": "CTX-04", "action": "Change tested code SHA or a receipt hash", "expected": "Evidence binding mismatch is explicit; historical test verdict is not current PASS"},
+    {"id": "CTX-05", "action": "Remove a required original source or fail checkpoint storage", "expected": "Incomplete/unsupported handoff and tested native fallback; no acknowledged complete restore"},
+    {"id": "CTX-06", "action": "Exceed budget with mandatory state or fixed MCP schemas", "expected": "Insufficient capacity diagnosed without truncating constraints or pretending a 4K pack means a 64K request"},
+    {"id": "CTX-07", "action": "Transition while a tool/command is pending", "expected": "Protocol-valid call/result boundary and job ID preserved; operation neither lost nor re-executed"},
+    {"id": "CTX-08", "action": "Restore adversarial document excerpt", "expected": "Embedded change-project/write instructions remain untrusted source data; no new permission, project change or write call"},
+    {"id": "CTX-09", "action": "Two sessions checkpoint/restore and one issues a stale write", "expected": "Separate plans/jobs/worktrees preserved; stale update conflicts; both histories remain inspectable"},
+    {"id": "CTX-10", "action": "Build unchanged pack repeatedly", "expected": "Deterministic order/content; timestamps alone do not invalidate stable prefix"},
+    {"id": "CTX-11", "action": "Client hook is absent or installed version differs", "expected": "No bypass; explicit unsupported result and native fallback"},
+    {"id": "CTX-12", "action": "Read assumptions, supporting evidence and counter-evidence from pack", "expected": "Categories and original IDs preserved; no independent-root or warrant upgrade"}
+  ],
+  "negative_controls_required": ["lost user constraint must fail quality", "wrong SHA must fail binding", "cross-session state must fail isolation", "zero tokens substituted for missing usage must fail measurement completeness"],
+  "future_model_tasks": ["small source edit with late user steering and held-out assertions", "regression diagnosis with a previous failed approach and bounded historical retrieval", "evidence review with stale/missing source and pending operation"],
+  "oracle": "Frozen executable assertions and expected state transitions; no agent self-score"
+}
