@@ -15,6 +15,10 @@ from cognitive_harness import __version__
 def main():
     args = sys.argv[1:]
 
+    if args and args[0] == "evidence":
+        from cognitive_harness.evidence.cli import main as evidence_main
+        sys.exit(evidence_main(args[1:]))
+
     if not args or args == ["--help", "-h"] or "-h" in args or "--help" in args:
         _print_help()
         sys.exit(0 if "--help" in args or "-h" in args else 0)
@@ -38,6 +42,7 @@ def _print_help():
     print("Usage: superretometer [COMMAND] [OPTIONS]")
     print()
     print("Commands:")
+    print("  evidence  Record, verify, import, evaluate and export test evidence")
     print("  mcp       Start the MCP server on stdin/stdout")
     print()
     print("Options:")

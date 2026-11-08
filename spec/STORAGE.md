@@ -277,3 +277,14 @@ Operations that can operate on partial/local retrieval:
 If a backend cannot guarantee complete enumeration, it MUST either:
 1. Raise `NotImplementedError` on `list_all_kos()`, or
 2. Return a completeness flag that the analysis layer can check before proceeding.
+
+
+## Proposed portable test-evidence target (#18)
+
+See TEST_EVIDENCE.md. The optional portable-inmemory/v1 target orchestrates initial
+mutations through public proposals and verifies graph readback. It archives only
+its scoped graph, proposal-result identities and separate CH/backend mappings.
+POSIX locking plus atomic ledger publication provide deterministic same-receipt
+reimport/conflict detection and explicit snapshot restoration across processes.
+This does not make InMemoryStorage durable, alter StorageInterface, or claim the
+same capabilities for private adapters. Unsupported target kinds are rejected.

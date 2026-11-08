@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/euthm/superretometer/spec/schemas/test-evaluation-v1.schema.json",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "enum": [
+        "test-evaluation/v1"
+      ]
+    },
+    "evaluation_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "run_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "receipt_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "target": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "policy": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "enum": [
+            "ImplementationGatePolicy"
+          ]
+        },
+        "package_version": {
+          "type": "string"
+        },
+        "source_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "name",
+        "package_version",
+        "source_sha256"
+      ],
+      "additionalProperties": false
+    },
+    "control": {
+      "enum": [
+        "baseline",
+        "commit_mismatch",
+        "missing_validator"
+      ]
+    },
+    "verification": {
+      "type": "object",
+      "properties": {
+        "integrity": {
+          "enum": [
+            "verified"
+          ]
+        },
+        "source_current": {
+          "enum": [
+            "verified",
+            "mismatch",
+            "unavailable"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "integrity",
+        "source_current",
+        "reasons"
+      ],
+      "additionalProperties": false
+    },
+    "acceptance": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "unknown"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "status",
+        "reasons"
+      ],
+      "additionalProperties": false
+    },
+    "gates": {
+      "type": "object"
+    },
+    "warrant": {
+      "type": "object"
+    },
+    "graph_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "approved": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "evaluation_id",
+    "run_id",
+    "receipt_sha256",
+    "target",
+    "timestamp",
+    "policy",
+    "control",
+    "verification",
+    "acceptance",
+    "gates",
+    "warrant",
+    "graph_sha256",
+    "approved"
+  ],
+  "additionalProperties": false
+}
