@@ -51,7 +51,8 @@ python examples/context_continuity/preflight.py \
 
 Never pass the complete OpenCode configuration or environment dump. These are
 operator-supplied observations; the probe does not independently query/verify the
-server. URLs/credentials and unknown keys are rejected. No raw version-probe logs
+server. URLs and unknown keys are rejected. Supply nonsecret labels only; the allowlist
+is not a general secret detector. No raw version-probe logs
 are persisted. The diagnostic itself uses standard Python only.
 
 ## Freeze experiment inputs
