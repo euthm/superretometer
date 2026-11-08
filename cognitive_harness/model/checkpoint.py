@@ -13,13 +13,15 @@ Identity model:
     These are independent: the ID locates the file, the hash verifies integrity.
 
 Token estimation:
-    estimated_tokens() renders the full context via CheckpointManager,
-    then applies the configured TokenEstimator.  The default is a
-    4-char proxy (upper-bound).  Production deployments should pass a
-    model-specific estimator (e.g., tiktoken) to get hard token counts.
+    CharProxyEstimator is the sole estimator (len(text) // 4).
+    The same instance is used by validation, compaction, and final
+    budget check — no divergence between stages.
 
-Format is stabilised at version 2.  Backward compatible with v1 for
-the fields listed in CHECKPOINT_SCHEMA_V1.
+    This is NOT a model tokenizer.  Production deployments should pass
+    a model-specific estimator (e.g., tiktoken) via the TokenEstimator
+    protocol to get hard token counts.
+
+Format is stabilised at version 2.
 """
 from __future__ import annotations
 
@@ -31,8 +33,6 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 
-# Canonical field list — validators and serializers depend on this order.
-# V2 adds: constraints, last_user_message, active_tool_actions, content_hash.
 CHECKPOINT_SCHEMA: list[str] = [
     "version",
     "checkpoint_id",
@@ -54,19 +54,9 @@ CHECKPOINT_SCHEMA: list[str] = [
     "session_id",
 ]
 
-# Fields considered mandatory for restore — must fit within budget.
-MANDATORY_FIELDS: frozenset[str] = frozenset({
-    "project_id", "project_name", "repo", "sha", "goals",
-})
-
 
 class TokenEstimator(Protocol):
-    """Estimate token count for a text string.
-
-    Implementations:
-        CharProxyEstimator  — len(text) // 4 (upper-bound, default)
-        TiktokenEstimator   — model-specific (hard count)
-    """
+    """Estimate token count for a text string."""
 
     def estimate(self, text: str) -> int: ...
 
@@ -75,11 +65,10 @@ class TokenEstimator(Protocol):
 
 
 class CharProxyEstimator:
-    """Rough upper-bound: 4 chars ≈ 1 token.
+    """len(text) // 4 token estimate.
 
-    This is NOT a model tokenizer.  It over-counts relative to most
-    models (GPT, Gemini, Claude), so it is safe as a conservative
-    budget gate.  Mark clearly as estimated.
+    Applied identically in validation, compaction, and final budget gate.
+    Not a model tokenizer — production should substitute a real one.
     """
 
     is_exact = False
@@ -126,28 +115,7 @@ class SourceReference:
 
 @dataclass
 class Checkpoint:
-    """Versioned snapshot of session state for handover and restore.
-
-    Fields:
-        version: Format version (int). Currently 2.
-        checkpoint_id: Random UUID — locator, not derived from content.
-        content_hash: SHA-256 of canonical JSON (integrity proof).
-        timestamp: ISO-8601 UTC timestamp.
-        project_id: Memory project UUID (e.g. d5ae0938-...).
-        project_name: Human-readable project name.
-        repo: Repository path or URL.
-        branch: Git branch name.
-        sha: Git commit SHA (full 40-char hex).
-        goals: Ordered list of goal strings.
-        constraints: Ordered list of constraint/mandate strings.
-        decisions: Dict of decision_id -> {rationale, outcome}.
-        last_user_message: Verbatim last user message before checkpoint.
-        open_tasks: List of {task_id, description, status}.
-        active_tool_actions: List of {tool, status, artifact} for in-flight work.
-        source_references: List of SourceReference anchors.
-        context_budget_tokens: Maximum token budget for restore context.
-        session_id: Origin session identifier.
-    """
+    """Versioned snapshot of session state for handover and restore."""
 
     version: int = 2
     checkpoint_id: str = ""
@@ -176,15 +144,11 @@ class Checkpoint:
         if not self.content_hash:
             self.content_hash = self._compute_content_hash()
 
-    # ── Serialisation ──────────────────────────────────────────────────
-
     def to_json(self, indent: int = 2) -> str:
-        """Serialise to JSON string.  Deterministic key order per schema."""
         d = self._to_ordered_dict()
         return json.dumps(d, indent=indent, ensure_ascii=False)
 
     def _to_ordered_dict(self) -> dict[str, Any]:
-        """Build dict with keys in CHECKPOINT_SCHEMA order."""
         d: dict[str, Any] = {}
         for key in CHECKPOINT_SCHEMA:
             val = getattr(self, key, None)
@@ -196,27 +160,18 @@ class Checkpoint:
 
     @classmethod
     def from_json(cls, data: str) -> Checkpoint:
-        """Deserialise from JSON string.  Unknown keys are ignored."""
         d = json.loads(data)
         return cls.from_dict(d)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Checkpoint:
-        """Deserialise from dict.  Unknown keys are ignored."""
         raw_refs = d.get("source_references", [])
         refs = [SourceReference.from_dict(r) for r in raw_refs if isinstance(r, dict)]
         cp = cls(**{k: v for k, v in d.items() if k in CHECKPOINT_SCHEMA})
         cp.source_references = refs
         return cp
 
-    # ── Integrity ──────────────────────────────────────────────────────
-
     def _compute_content_hash(self) -> str:
-        """SHA-256 of canonical JSON excluding checkpoint_id and content_hash.
-
-        This ensures the hash is content-derived, not identity-derived.
-        Two checkpoints with identical content but different IDs get the same hash.
-        """
         d = self._to_ordered_dict()
         d.pop("checkpoint_id", None)
         d.pop("content_hash", None)
@@ -224,14 +179,9 @@ class Checkpoint:
         return hashlib.sha256(canonical.encode()).hexdigest()
 
     def get_content_hash(self) -> str:
-        """Return stored content hash (SHA-256 of canonical JSON)."""
         return self.content_hash
 
     def verify_integrity(self) -> bool:
-        """Verify stored content_hash matches computed hash.
-
-        Raises CheckpointIntegrityError if mismatch (tampering detection).
-        """
         computed = self._compute_content_hash()
         if computed != self.content_hash:
             raise CheckpointIntegrityError(
@@ -240,39 +190,18 @@ class Checkpoint:
             )
         return True
 
-    # ── Token estimation ───────────────────────────────────────────────
-
     def estimated_tokens(
         self,
         estimator: TokenEstimator | None = None,
     ) -> int:
-        """Estimate token count of the full rendered context.
+        """Estimate tokens of the full rendered context.
 
-        Renders the context via CheckpointManager (avoiding circular import),
-        then applies the given TokenEstimator.  Default: CharProxyEstimator.
-
-        Returns int: estimated tokens for the rendered context string.
+        Delegates to CheckpointManager.generate_restore_context(), then
+        applies the estimator.  Default: CharProxyEstimator.
         """
         if estimator is None:
             estimator = CharProxyEstimator()
-        # Lazy import to avoid circular dependency
-        from cognitive_harness.orchestration.checkpoint_manager import (
-            CheckpointManager,
-        )
+        from cognitive_harness.orchestration.checkpoint_manager import CheckpointManager
         mgr = CheckpointManager()
         context = mgr.generate_restore_context(self)
         return estimator.estimate(context)
-
-    def mandatory_token_estimate(
-        self,
-        estimator: TokenEstimator | None = None,
-    ) -> int:
-        """Token estimate of mandatory fields only (no rendering overhead).
-
-        Used by the budget gate: if even mandatory content exceeds budget,
-        restore is blocked (no compaction fallback can help).
-        """
-        if estimator is None:
-            estimator = CharProxyEstimator()
-        mandatory = {k: getattr(self, k, None) for k in MANDATORY_FIELDS}
-        return estimator.estimate(json.dumps(mandatory, sort_keys=True))

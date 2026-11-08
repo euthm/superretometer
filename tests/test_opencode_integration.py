@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from cognitive_harness.model.checkpoint import Checkpoint, SourceReference
+from cognitive_harness.model.checkpoint import Checkpoint, SourceReference, CharProxyEstimator
 from cognitive_harness.integration.opencode import (
     OpenCodeContextInjector,
     ContextInjectionError,
@@ -123,29 +123,40 @@ class TestContextInjection:
 
 class TestCompaction:
     def test_compacts_when_budget_exceeded(self, tmp_checkpoint_dir: Path):
+        """Budget allows mandatory content, but full context needs compaction."""
         injector = OpenCodeContextInjector(
             checkpoint_dir=tmp_checkpoint_dir,
             expected_project_id="compact-test",
-            budget_tokens=50,
+            budget_tokens=100,
         )
         cp = injector.manager.create_checkpoint(
             project_id="compact-test",
             project_name="compact",
             repo="/tmp", branch="main", sha="abc123",
             goals=["Goal one", "Goal two"],
+            constraints=["Constraint A"],
+            last_user_message="Continue the task",
+            active_tool_actions=[{"tool": "grep", "status": "running"}],
             decisions={
                 "d1": {"outcome": "Decision one", "rationale": "Long rationale one"},
                 "d2": {"outcome": "Decision two", "rationale": "Long rationale two"},
+                "d3": {"outcome": "Decision three", "rationale": "Long rationale three"},
             },
             open_tasks=[
                 {"task_id": "t1", "description": "Task one", "status": "open"},
                 {"task_id": "t2", "description": "Task two", "status": "open"},
+                {"task_id": "t3", "description": "Task three", "status": "open"},
             ],
         )
         preamble, report = injector.inject(cp.checkpoint_id)
-        assert len(preamble) // 4 < 200
         assert "COMPACTED" in preamble
         assert "Goal one" in preamble
+        # Mandatory fields preserved
+        assert "Constraint A" in preamble
+        assert "Continue the task" in preamble
+        assert "grep" in preamble
+        est = CharProxyEstimator()
+        assert est.estimate(preamble) <= 100
 
     def test_compaction_preserves_goals(self, tmp_checkpoint_dir: Path):
         injector = OpenCodeContextInjector(
@@ -197,3 +208,91 @@ class TestCompaction:
         )
         with pytest.raises(ContextInjectionError, match="exceeds"):
             injector.inject(cp.checkpoint_id)
+
+    def test_compaction_includes_constraints_and_tools(self, tmp_checkpoint_dir: Path):
+        """Compacted context preserves mandatory fields: constraints, last_user_message, active_tool_actions."""
+        injector = OpenCodeContextInjector(
+            checkpoint_dir=tmp_checkpoint_dir,
+            expected_project_id="compact-mandatory",
+            budget_tokens=120,
+        )
+        cp = injector.manager.create_checkpoint(
+            project_id="compact-mandatory",
+            project_name="cm",
+            repo="/tmp", branch="main", sha="abc123",
+            goals=["Primary goal"],
+            constraints=["Do not touch prod"],
+            last_user_message="Fix the bug",
+            active_tool_actions=[{"tool": "git", "status": "pending", "artifact": "diff.patch"}],
+            decisions={
+                "d1": {"outcome": "Use approach A", "rationale": "Rationale for A"},
+                "d2": {"outcome": "Use approach B", "rationale": "Rationale for B"},
+            },
+            open_tasks=[
+                {"task_id": "t1", "description": "Task 1", "status": "open"},
+                {"task_id": "t2", "description": "Task 2", "status": "open"},
+            ],
+        )
+        preamble, _ = injector.inject(cp.checkpoint_id)
+        est = CharProxyEstimator()
+        assert "Primary goal" in preamble
+        assert "Do not touch prod" in preamble
+        assert "Fix the bug" in preamble
+        assert "git" in preamble
+        assert est.estimate(preamble) <= 120
+
+    def test_final_preamble_budget_check(self, tmp_checkpoint_dir: Path):
+        """The final preamble (context + header) is checked against budget.
+        If normal rendering fits context budget but preamble exceeds total budget,
+        compaction is triggered."""
+        injector = OpenCodeContextInjector(
+            checkpoint_dir=tmp_checkpoint_dir,
+            expected_project_id="preamble-check",
+            budget_tokens=70,
+        )
+        cp = injector.manager.create_checkpoint(
+            project_id="preamble-check",
+            project_name="pc",
+            repo="/tmp", branch="main", sha="abc",
+            goals=["Goal"],
+            decisions={"d1": {"outcome": "x", "rationale": "y" * 50}},
+            open_tasks=[{"task_id": "t1", "description": "desc", "status": "open"}],
+        )
+        preamble, _ = injector.inject(cp.checkpoint_id)
+        est = CharProxyEstimator()
+        assert est.estimate(preamble) <= 70
+
+    def test_compaction_uses_same_estimator(self, tmp_checkpoint_dir: Path):
+        """Compaction uses the same CharProxyEstimator instance — not inline len//4."""
+        injector = OpenCodeContextInjector(
+            checkpoint_dir=tmp_checkpoint_dir,
+            expected_project_id="est-test",
+            budget_tokens=80,
+        )
+        cp = injector.manager.create_checkpoint(
+            project_id="est-test",
+            project_name="et",
+            repo="/tmp", branch="main", sha="abc",
+            goals=["G1"],
+            decisions={f"d{i}": {"outcome": f"x{i}", "rationale": f"r{i}" * 20} for i in range(10)},
+        )
+        preamble, _ = injector.inject(cp.checkpoint_id)
+        est = CharProxyEstimator()
+        assert est.estimate(preamble) <= 80
+
+    def test_compacted_preamble_verified_before_return(self, tmp_checkpoint_dir: Path):
+        """Compacted preamble that exceeds budget is rejected, not returned."""
+        injector = OpenCodeContextInjector(
+            checkpoint_dir=tmp_checkpoint_dir,
+            expected_project_id="verify-test",
+            budget_tokens=10,  # extremely tight — even compacted won't fit
+        )
+        cp = injector.manager.create_checkpoint(
+            project_id="verify-test",
+            project_name="v" * 100,
+            repo="/tmp", branch="main", sha="abc",
+            goals=["G" * 200],
+        )
+        with pytest.raises(ContextInjectionError, match="exceeds"):
+            injector.inject(cp.checkpoint_id)
+

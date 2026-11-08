@@ -10,11 +10,16 @@ After loading a checkpoint, this module validates:
 
 Each check returns a ValidationResult: pass, warning, or fail.
 A restore with any 'fail' result should not proceed silently.
+
+The same CharProxyEstimator instance is used for all token counts —
+no divergence from the estimator used by CheckpointManager or
+OpenCodeContextInjector.
 """
 from __future__ import annotations
 
 import json
 import logging
+import subprocess
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -72,11 +77,6 @@ class ValidationReport:
 
     @property
     def is_safe_to_restore(self) -> bool:
-        """Return True if no validation failures.
-
-        Budget exceeded is NOT a failure — it triggers compaction, not rejection.
-        Only semantic failures (wrong project, missing fields, etc.) block restore.
-        """
         return not self.has_failures
 
     def to_json(self) -> str:
@@ -109,11 +109,13 @@ class RestoreValidator:
         self.expected_project_id = expected_project_id
         self.budget_tokens = budget_tokens
         self.git_repo_path = git_repo_path
+        self.estimator = CharProxyEstimator()
 
     def validate(self, cp: Checkpoint) -> ValidationReport:
         """Run all validation checks against a checkpoint.
 
-        Returns a ValidationReport with pass/warning/fail results.
+        Renders context once with the same estimator, checks budget
+        against the rendered output.
         """
         report = ValidationReport(
             checkpoint_id=cp.checkpoint_id,
@@ -130,16 +132,15 @@ class RestoreValidator:
         # Render context once and check budget against rendered output
         from cognitive_harness.orchestration.checkpoint_manager import CheckpointManager
         mgr = CheckpointManager()
-        context = mgr.generate_restore_context(cp)
-        report.context_tokens = CharProxyEstimator().estimate(context)
-        report.results.append(self._check_context_budget(cp, context))
+        context = mgr.generate_restore_context(cp, estimator=self.estimator)
+        report.context_tokens = self.estimator.estimate(context)
+        report.results.append(self._check_context_budget(context))
 
         return report
 
     # ── Individual checks ──────────────────────────────────────────────
 
     def _check_project_id(self, cp: Checkpoint) -> ValidationResult:
-        """Verify project ID matches expected scope."""
         if not self.expected_project_id:
             return ValidationResult(
                 check_name="project_id",
@@ -161,11 +162,6 @@ class RestoreValidator:
         )
 
     def _check_sha_freshness(self, cp: Checkpoint) -> ValidationResult:
-        """Check if the checkpoint SHA has successor commits.
-
-        Returns WARNING if the SHA is behind HEAD on the same branch.
-        Returns PASS if the SHA is current or branch is not accessible.
-        """
         if not cp.sha or not self.git_repo_path:
             return ValidationResult(
                 check_name="sha_freshness",
@@ -173,8 +169,6 @@ class RestoreValidator:
                 message="SHA freshness check skipped (no repo path or empty SHA)",
                 details={"sha": cp.sha[:12] if cp.sha else ""},
             )
-
-        import subprocess
 
         try:
             result = subprocess.run(
@@ -192,7 +186,6 @@ class RestoreValidator:
                     details={"sha": cp.sha[:12]},
                 )
 
-            # Check if there are commits after this SHA on the branch
             if cp.branch:
                 branch_sha = subprocess.run(
                     ["git", "rev-parse", cp.branch],
@@ -204,7 +197,6 @@ class RestoreValidator:
                 if branch_sha.returncode == 0:
                     branch_commit = branch_sha.stdout.strip()
                     if branch_commit != cp.sha:
-                        # Count commits between checkpoint SHA and branch HEAD
                         count_result = subprocess.run(
                             ["git", "rev-list", f"{cp.sha}..{branch_commit}", "--count"],
                             cwd=self.git_repo_path,
@@ -240,7 +232,6 @@ class RestoreValidator:
             )
 
     def _check_source_references(self, cp: Checkpoint) -> ValidationResult:
-        """Verify that source reference paths are accessible."""
         if not cp.source_references:
             return ValidationResult(
                 check_name="source_references",
@@ -273,32 +264,19 @@ class RestoreValidator:
             details={"accessible": accessible},
         )
 
-    def _check_context_budget(self, cp: Checkpoint, rendered_context: str = "") -> ValidationResult:
-        """Check if the **rendered** context fits within budget.
+    def _check_context_budget(self, rendered_context: str = "") -> ValidationResult:
+        """Check if the rendered context fits within budget.
 
-        The rendered context includes all headers, metadata, goals, decisions,
-        constraints, tasks, and source references — not just the checkpoint JSON.
-
-        Budget exceeded is a WARNING, not a FAIL — the injector can compact.
-        Only semantic failures (wrong project, missing fields) block restore.
-
-        NOTE: Token count is estimated via CharProxyEstimator (4-char proxy).
-        This is a conservative upper-bound, NOT a model tokenizer.  The
-        entire request (system prompt, MCP tools, recent messages, reply)
-        must also fit in the context window — this check only covers the
-        checkpoint context injection portion.
+        Uses the same CharProxyEstimator instance (self.estimator).
+        Budget exceeded is a WARNING — the injector can compact.
         """
-        estimator = CharProxyEstimator()
-        if rendered_context:
-            estimated = estimator.estimate(rendered_context)
-        else:
-            estimated = cp.estimated_tokens(estimator)
+        estimated = self.estimator.estimate(rendered_context)
         if estimated > self.budget_tokens:
             return ValidationResult(
                 check_name="context_budget",
                 severity=Severity.WARNING,
                 message=(
-                    f"Rendered context ({estimated} tokens, estimated) exceeds "
+                    f"Rendered context ({estimated} tokens) exceeds "
                     f"budget ({self.budget_tokens} tokens) — compaction needed"
                 ),
                 details={
@@ -306,11 +284,6 @@ class RestoreValidator:
                     "budget": self.budget_tokens,
                     "estimator": "char_proxy",
                     "is_exact": False,
-                    "note": (
-                        "Estimate only (4-char proxy).  Does not account for "
-                        "system prompt, MCP tools, recent messages, or reply "
-                        "reserve.  Use model tokenizer for hard token budget."
-                    ),
                 },
             )
         if estimated > self.budget_tokens * 0.8:
@@ -318,7 +291,7 @@ class RestoreValidator:
                 check_name="context_budget",
                 severity=Severity.WARNING,
                 message=(
-                    f"Rendered context ({estimated} tokens, estimated) is "
+                    f"Rendered context ({estimated} tokens) is "
                     f"{estimated / self.budget_tokens * 100:.0f}% of budget"
                 ),
                 details={
@@ -331,7 +304,7 @@ class RestoreValidator:
         return ValidationResult(
             check_name="context_budget",
             severity=Severity.PASS,
-            message=f"Rendered context fits budget: {estimated}/{self.budget_tokens} tokens (estimated)",
+            message=f"Rendered context fits budget: {estimated}/{self.budget_tokens} tokens",
             details={
                 "estimated_tokens": estimated,
                 "budget": self.budget_tokens,
@@ -341,7 +314,6 @@ class RestoreValidator:
         )
 
     def _check_required_fields(self, cp: Checkpoint) -> ValidationResult:
-        """Verify that required fields are present and non-empty."""
         required = {
             "project_id": "Project ID is required for scoped restore",
             "sha": "Git SHA is required for provenance tracking",
@@ -368,7 +340,6 @@ class RestoreValidator:
         )
 
     def _check_integrity(self, cp: Checkpoint) -> ValidationResult:
-        """Verify content hash matches (tampering detection)."""
         try:
             cp.verify_integrity()
             return ValidationResult(
@@ -386,7 +357,6 @@ class RestoreValidator:
             )
 
     def _check_version(self, cp: Checkpoint) -> ValidationResult:
-        """Validate checkpoint format version."""
         if cp.version < 1:
             return ValidationResult(
                 check_name="version",

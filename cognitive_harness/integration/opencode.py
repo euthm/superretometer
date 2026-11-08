@@ -12,57 +12,47 @@ OpenCode integration layer.  The injector handles:
 1. Validation against expected project, budget, and source accessibility
 2. Budget gate (mandatory content check)
 3. Compaction fallback when context exceeds budget
-4. Rendering the final preamble with metadata header
+4. Final preamble budget check — the complete preamble is verified before return
 
 OPENCODE INTEGRATION STATUS:
     Automatic injection via MCP tool or subagent hook: UNIMPLEMENTED.
     The injector provides the preamble string; the caller is responsible
-    for injecting it into the agent session (e.g., system prompt, context
-    window, or AGENTS.md preamble).
+    for injecting it into the agent session.
 
-CLIENT VERSION REQUIREMENTS:
-    opencode >= 0.1.0 (context injection via system prompt)
-    Memory MCP >= v0.41 (for project-scoped entity queries)
+TOKEN ESTIMATION:
+    A single CharProxyEstimator instance (self.estimator) is shared across
+    validation, context generation, compaction, and final preamble check.
+    No divergence between stages.
 
-COUPLING POINT:
-    The injector returns a (preamble: str, report: ValidationReport) tuple.
-    The caller (OpenCode agent, subagent, or CLI) prepends the preamble to
-    the session system prompt.  No bidirectional coupling exists.
-
-TOKEN BUDGET:
-    Token counts are estimates (CharProxyEstimator: len(text) // 4).
-    The budget check covers the checkpoint context injection ONLY.
-    The caller must ensure the full request fits:
-        total ≤ context_window
-        where total = system_prompt + checkpoint_context + recent_messages
-            + mcp_tool_descriptions + reply_reserve
-
-    For hard token budgets, integrate a model-specific tokenizer
-    (e.g., tiktoken for OpenAI models, gemini tokenizer for Google).
+    Token counts are estimates (len(text) // 4).  The budget check covers
+    the checkpoint context injection only.  The caller must ensure the full
+    request fits the context window.
 """
 from __future__ import annotations
 
 import logging
 from pathlib import Path
 
+from cognitive_harness.model.checkpoint import (
+    Checkpoint,
+    CheckpointIntegrityError,
+    CharProxyEstimator,
+)
 from cognitive_harness.orchestration.checkpoint_manager import (
     CheckpointManager,
     CheckpointError,
     CheckpointBudgetError,
 )
-from cognitive_harness.model.checkpoint import CheckpointIntegrityError
 from cognitive_harness.orchestration.restore_validator import (
     RestoreValidator,
     ValidationReport,
     Severity,
 )
-from cognitive_harness.model.checkpoint import Checkpoint
 
 log = logging.getLogger(__name__)
 
-# Integration metadata
 INTEGRATION_VERSION = "0.1.0"
-INTEGRATION_STATUS = "manual"  # auto-injection not yet implemented
+INTEGRATION_STATUS = "manual"
 MIN_OPENCODE_VERSION = "0.1.0"
 
 
@@ -77,11 +67,9 @@ class OpenCodeContextInjector:
     1. Load checkpoint by ID (integrity verified)
     2. Validate against expected project, budget, and source accessibility
     3. Budget gate: mandatory content must fit
-    4. If budget exceeded: apply compaction (strip non-essential fields)
-    5. Return (preamble, validation_report)
-
-    The preamble is a Markdown-formatted context block suitable for
-    prepending to the agent system prompt.
+    4. If budget exceeded: apply compaction
+    5. Final preamble budget check — verify complete preamble fits
+    6. Return (preamble, validation_report)
     """
 
     def __init__(
@@ -98,6 +86,7 @@ class OpenCodeContextInjector:
             git_repo_path=git_repo_path,
         )
         self.budget_tokens = budget_tokens
+        self.estimator = CharProxyEstimator()
 
     def inject(self, checkpoint_id: str) -> tuple[str, ValidationReport]:
         """Inject checkpoint context.  Returns (preamble, report).
@@ -112,7 +101,6 @@ class OpenCodeContextInjector:
 
         report = self.validator.validate(cp)
 
-        # Semantic failures block restore
         if report.has_failures:
             failures = [
                 r.message
@@ -123,36 +111,45 @@ class OpenCodeContextInjector:
                 f"Cannot inject checkpoint {checkpoint_id}: {'; '.join(failures)}"
             )
 
-        # Generate context with budget gate
+        # Reserve tokens for the preamble header wrapper
+        header_template = (
+            f"# CONTEXT RESTORED FROM CHECKPOINT\n"
+            f"Checkpoint ID: ???\n"
+            f"Content Hash: ???\n"
+            f"---\n\n"
+        )
+        header_cost = self.estimator.estimate(header_template)
+        context_budget = self.budget_tokens - header_cost
+
+        # Generate context with budget gate (mandatory check against context budget)
         try:
             context = self.manager.generate_restore_context(
-                cp, budget_tokens=self.budget_tokens
+                cp, budget_tokens=context_budget, estimator=self.estimator,
             )
         except CheckpointBudgetError as e:
             raise ContextInjectionError(str(e)) from e
 
-        # Check if compaction is needed
-        context_tokens = len(context) // 4
-        if context_tokens > self.budget_tokens:
+        preamble = self._build_preamble(context, cp)
+        preamble_tokens = self.estimator.estimate(preamble)
+
+        # Try compaction if full preamble exceeds budget
+        if preamble_tokens > self.budget_tokens:
             compacted = self._compact_context(cp, self.budget_tokens)
-            if compacted:
-                preamble = self._build_preamble(compacted, cp)
+            if compacted is not None:
                 log.warning(
-                    "Context compacted to fit budget: %d -> %d tokens",
-                    context_tokens,
-                    len(preamble) // 4,
+                    "Context compacted to fit budget: %d tokens",
+                    self.estimator.estimate(compacted),
                 )
-                return preamble, report
+                return compacted, report
             raise ContextInjectionError(
                 f"Checkpoint {checkpoint_id} cannot be compacted to fit "
                 f"{self.budget_tokens}-token budget"
             )
 
-        preamble = self._build_preamble(context, cp)
         log.info(
             "Context injected: %s (%d tokens, %d warnings)",
             checkpoint_id,
-            len(preamble) // 4,
+            preamble_tokens,
             sum(
                 1
                 for r in report.results
@@ -167,11 +164,6 @@ class OpenCodeContextInjector:
         project_id: str | None = None,
         branch: str | None = None,
     ) -> tuple[str, ValidationReport]:
-        """Inject the latest matching checkpoint.
-
-        Filters by project_id and/or branch.  Returns the most recent
-        checkpoint that matches the criteria.
-        """
         checkpoints = self.manager.list_checkpoints()
         candidates = []
         for cp_info in checkpoints:
@@ -197,7 +189,6 @@ class OpenCodeContextInjector:
         return self.inject(latest)
 
     def _build_preamble(self, context: str, cp: Checkpoint) -> str:
-        """Build the final preamble with checkpoint metadata header."""
         return (
             f"# CONTEXT RESTORED FROM CHECKPOINT\n"
             f"Checkpoint ID: {cp.checkpoint_id}\n"
@@ -213,73 +204,117 @@ class OpenCodeContextInjector:
     ) -> str | None:
         """Compact checkpoint context to fit within target token budget.
 
-        Strategy (priority order):
-        1. Goals (mandatory — always included)
-        2. Constraints
-        3. Decisions (if budget < 70% used)
-        4. Open tasks (if budget < 85% used)
-        5. Source references (if budget < 95% used)
+        Builds context body, reserves space for preamble header, then
+        verifies the complete preamble against the budget.
 
-        Returns compacted context string, or None if goals alone exceed budget.
+        Mandatory-first rendering:
+            1. Metadata header + goals + constraints + last_user_message +
+               active_tool_actions  (mandatory — cannot be dropped).
+            2. If mandatory exceeds budget → None (blocked).
+            3. Decisions, tasks, sources  (optional — appended if they fit).
+            4. Wrap in preamble header, verify final preamble fits.
+
+        Returns the final preamble string, or None if mandatory alone exceeds budget.
         """
-        lines = [
-            f"# Checkpoint: {cp.checkpoint_id} (COMPACTED)",
-            f"# Project: {cp.project_name} ({cp.project_id})",
-            f"# Repo: {cp.repo} @ {cp.branch}:{cp.sha[:12]}",
-            "",
-        ]
+        # Reserve tokens for the preamble header wrapper
+        header_template = (
+            f"# CONTEXT RESTORED FROM CHECKPOINT\n"
+            f"Checkpoint ID: {cp.checkpoint_id}\n"
+            f"Content Hash: {cp.content_hash[:16]}\n"
+            f"---\n\n"
+        )
+        header_cost = self.estimator.estimate(header_template)
+        context_budget = target_tokens - header_cost
 
-        def _token_count() -> int:
-            return len("\n".join(lines)) // 4
+        lines: list[str] = []
 
-        # Goals — mandatory
+        def _count() -> int:
+            return self.estimator.estimate("\n".join(lines))
+
+        # ── Metadata header ──────────────────────────────────────────
+        lines.append(f"# Checkpoint: {cp.checkpoint_id} (COMPACTED)")
+        lines.append(f"# Content Hash: {cp.content_hash[:16]}")
+        lines.append(f"# Project: {cp.project_name} ({cp.project_id})")
+        lines.append(f"# Repo: {cp.repo} @ {cp.branch}:{cp.sha[:12]}")
+        lines.append("")
+
+        # ── Mandatory sections ───────────────────────────────────────
         if cp.goals:
             lines.append("## Goals")
             for i, g in enumerate(cp.goals, 1):
                 lines.append(f"{i}. {g}")
             lines.append("")
 
-        if _token_count() > target_tokens:
-            log.error(
-                "Goals alone exceed budget (%d > %d tokens)",
-                _token_count(),
-                target_tokens,
-            )
-            return None
-
-        # Constraints — high priority
-        if cp.constraints and _token_count() < target_tokens * 0.6:
+        if cp.constraints:
             lines.append("## Constraints")
             for c in cp.constraints:
                 lines.append(f"- {c}")
             lines.append("")
 
-        # Decisions
-        if cp.decisions and _token_count() < target_tokens * 0.7:
-            lines.append("## Decisions")
-            for did, d in cp.decisions.items():
-                outcome = d.get("outcome", "")
-                lines.append(f"- **{did}**: {outcome}")
+        if cp.last_user_message:
+            lines.append("## Last User Message")
+            lines.append(f"> {cp.last_user_message}")
             lines.append("")
 
-        # Open tasks
-        if cp.open_tasks and _token_count() < target_tokens * 0.85:
-            lines.append("## Open Tasks")
+        if cp.active_tool_actions:
+            lines.append("## Active Tool Actions")
+            for a in cp.active_tool_actions:
+                tool = a.get("tool", "unknown")
+                status = a.get("status", "unknown")
+                artifact = a.get("artifact", "")
+                lines.append(f"- [{status}] {tool}" + (f" → {artifact}" if artifact else ""))
+            lines.append("")
+
+        # Mandatory gate (against context budget, not total)
+        if _count() > context_budget:
+            log.error(
+                "Mandatory context (%d tokens) exceeds context budget (%d tokens)",
+                _count(), context_budget,
+            )
+            return None
+
+        # ── Optional sections — append if they fit ───────────────────
+        def _append_section(block: list[str]) -> None:
+            nonlocal lines
+            trial = lines + block
+            if self.estimator.estimate("\n".join(trial)) <= context_budget:
+                lines.extend(block)
+
+        if cp.decisions:
+            sec = ["## Decisions"]
+            for did, d in cp.decisions.items():
+                outcome = d.get("outcome", "")
+                sec.append(f"- **{did}**: {outcome}")
+            sec.append("")
+            _append_section(sec)
+
+        if cp.open_tasks:
+            sec = ["## Open Tasks"]
             for t in cp.open_tasks:
                 status = t.get("status", "pending")
                 desc = t.get("description", "")
-                lines.append(f"- [{status}] {desc}")
-            lines.append("")
+                sec.append(f"- [{status}] {desc}")
+            sec.append("")
+            _append_section(sec)
 
-        # Source references
-        if cp.source_references and _token_count() < target_tokens * 0.95:
-            lines.append("## Source References")
+        if cp.source_references:
+            sec = ["## Source References"]
             for sr in cp.source_references:
                 sha_tag = f"@{sr.sha[:8]}" if sr.sha else ""
-                lines.append(f"- `{sr.path}` {sha_tag}")
-            lines.append("")
+                sec.append(f"- `{sr.path}` {sha_tag}")
+            sec.append("")
+            _append_section(sec)
 
-        return "\n".join(lines)
+        # Wrap in preamble and verify final fits
+        preamble = self._build_preamble("\n".join(lines), cp)
+        if self.estimator.estimate(preamble) > target_tokens:
+            log.error(
+                "Compacted preamble (%d tokens) exceeds budget (%d tokens)",
+                self.estimator.estimate(preamble), target_tokens,
+            )
+            return None
+
+        return preamble
 
 
 # ── CLI helper ────────────────────────────────────────────────────────────

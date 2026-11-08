@@ -23,7 +23,7 @@ from cognitive_harness.model.checkpoint import (
     SourceReference,
     CheckpointIntegrityError,
     CHECKPOINT_SCHEMA,
-    MANDATORY_FIELDS,
+    CharProxyEstimator,
 )
 from cognitive_harness.orchestration.checkpoint_manager import (
     CheckpointManager,
@@ -168,11 +168,6 @@ class TestCheckpointCreation:
         tokens = sample_checkpoint.estimated_tokens()
         assert 0 < tokens < 10_000
 
-    def test_mandatory_token_estimate(self, sample_checkpoint: Checkpoint):
-        mandatory = sample_checkpoint.mandatory_token_estimate()
-        total = sample_checkpoint.estimated_tokens()
-        assert 0 < mandatory < total  # mandatory is a subset
-
     def test_from_dict_ignores_unknown_keys(self):
         d = {
             "project_id": "test-123",
@@ -306,6 +301,67 @@ class TestBudgetGate:
         )
         context = mgr.generate_restore_context(cp, budget_tokens=16_000)
         assert context
+
+    def test_mandatory_first_rendering_order(self, mgr: CheckpointManager):
+        """Mandatory sections appear before optional sections in rendered context."""
+        cp = mgr.create_checkpoint(
+            project_id="order-test",
+            project_name="ot",
+            repo="/r", branch="b", sha="abc",
+            goals=["Goal"],
+            constraints=["Must do X"],
+            last_user_message="Proceed",
+            active_tool_actions=[{"tool": "t", "status": "s"}],
+            decisions={"d1": {"outcome": "opt"}},
+            open_tasks=[{"task_id": "t1", "description": "opt", "status": "pending"}],
+        )
+        context = mgr.generate_restore_context(cp)
+        # Mandatory sections must appear before optional
+        goals_pos = context.index("## Goals")
+        constraints_pos = context.index("## Constraints")
+        msg_pos = context.index("## Last User Message")
+        tools_pos = context.index("## Active Tool Actions")
+        dec_pos = context.index("## Decisions")
+        tasks_pos = context.index("## Open Tasks")
+        assert goals_pos < constraints_pos < msg_pos < tools_pos < dec_pos < tasks_pos
+
+    def test_optional_dropped_when_budget_tight(self, mgr: CheckpointManager):
+        """When budget is tight, optional sections are dropped but mandatory preserved."""
+        cp = mgr.create_checkpoint(
+            project_id="drop-test",
+            project_name="dt",
+            repo="/r", branch="b", sha="abc",
+            goals=["Goal"],
+            constraints=["Constraint"],
+            last_user_message="Message",
+            active_tool_actions=[{"tool": "t", "status": "running"}],
+            decisions={f"d{i}": {"outcome": f"outcome {i}", "rationale": "x" * 200} for i in range(10)},
+            open_tasks=[{"task_id": f"t{i}", "description": "d" * 100, "status": "open"} for i in range(10)],
+        )
+        context = mgr.generate_restore_context(cp, budget_tokens=80)
+        # Mandatory fields present
+        assert "Goal" in context
+        assert "Constraint" in context
+        assert "Message" in context
+        assert "Active Tool Actions" in context
+        # Optional may be dropped
+        est = CharProxyEstimator()
+        assert est.estimate(context) <= 80
+
+    def test_same_estimator_across_stages(self, mgr: CheckpointManager, sample_checkpoint: Checkpoint):
+        """Validation, rendering, and estimation use the same estimator instance."""
+        validator = RestoreValidator(
+            expected_project_id=sample_checkpoint.project_id,
+            budget_tokens=16_000,
+        )
+        report = validator.validate(sample_checkpoint)
+        est = CharProxyEstimator()
+        context = mgr.generate_restore_context(
+            sample_checkpoint, estimator=est
+        )
+        context_tokens = est.estimate(context)
+        assert report.context_tokens == context_tokens
+
 
 
 # ── Validation ───────────────────────────────────────────────────────────
