@@ -4,6 +4,21 @@ All notable changes to cognitive-harness (Superretometer).
 
 ## [Unreleased]
 
+### Added
+- Portable test-evidence workflow (#18): optional evidence SDK/CLI for explicit
+  argv capture, schema/byte verification, proposal-backed portable target import,
+  existing gate/warrant evaluation and checksummed third-party bundle export.
+- Typed receipts, capture profiles and append-only evaluation/bundle contracts;
+  path/length/file hashes supplement the unchanged legacy blob digest.
+- Public eight-assertion fixture with separate-process replay, isolated commit/
+  validator controls, no private services, and failure/tampering conformance tests.
+- Explicit retention/locators, configured redaction, scoped snapshots and POSIX
+  target locks. Unsupported private backends fail rather than imply integration.
+
+### Clarified
+- Implementation policy has seven gates; PASS is dimension-specific and is not
+  independent certification. Existing policy/warrant algorithms are unchanged.
+
 ### Documentation
 - Record StrategyServer as the maintainer's current external strategy workflow,
   replacing the previous local EPF workflow.

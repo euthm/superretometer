@@ -222,7 +222,7 @@ A claim that declares `what_would_falsify` validators but has no passing validat
 
 > Implementation gates verify self-consistency, not external truth.
 
-The six gates compare a claim's declared provenance against its own declared scope, test evidence, and dependency pins. They cannot detect fabricated claims — a wholly invented commit hash, test run, and remote will pass all gates if internally consistent. The gates establish that the claim is *well-formed* and *self-consistent*, not that the underlying code exists or the tests are genuine. Trust in the claim rests on the agent or human that authored it.
+The seven gates compare a claim's declared provenance against its own declared scope, test evidence, dependency pins and current path-scoped source bytes. They cannot detect fabricated claims — a wholly invented commit hash, test run, and remote will pass all gates if internally consistent. The gates establish that the claim is *well-formed* and *self-consistent*, not that the underlying code exists or the tests are genuine. Trust in the claim rests on the agent or human that authored it. Portable receipts (`TEST_EVIDENCE.md`, proposed in #18) add byte-bound execution observations and scoped workflow acceptance without changing this trust boundary or promoting warrant.
 
 ### Storage Contract (N-STORAGE-MUTABILITY)
 

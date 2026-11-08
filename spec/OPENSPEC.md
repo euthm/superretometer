@@ -21,6 +21,14 @@
 - Non-linear Threads with transition metadata (Muller's CAFCR Threads of Reasoning)
 - Warrant recomputation on supersession (tied to v0.3 impact propagation)
 
+## Proposed additive test-evidence workflow (#18)
+
+`spec/TEST_EVIDENCE.md` and the `test-*.schema.json` schemas define the proposed
+portable receipt/capture/import/evaluation/bundle contracts. They preserve the
+existing seven-gate implementation policy, warrant and truth defaults. Review
+artifacts are in `openspec/changes/add-portable-test-evidence-workflow/`; they do
+not supersede this normative hierarchy. No private runtime integration is implied.
+
 ---
 
 ## 1. Motivation

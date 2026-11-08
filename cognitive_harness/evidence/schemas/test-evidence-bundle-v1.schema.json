@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/euthm/superretometer/spec/schemas/test-evidence-bundle-v1.schema.json",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "enum": [
+        "evidence-bundle/v1"
+      ]
+    },
+    "receipt_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "evaluation_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "size",
+          "sha256"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "trust": {
+      "enum": [
+        "runner-reported; checksums are not authenticity or independent certification"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "receipt_sha256",
+    "evaluation_ids",
+    "files",
+    "trust"
+  ],
+  "additionalProperties": false
+}

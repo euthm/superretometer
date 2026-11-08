@@ -1,0 +1,768 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/euthm/superretometer/spec/schemas/test-run-receipt-v1.schema.json",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "enum": [
+        "test-run/v1"
+      ]
+    },
+    "run_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "producer": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "enum": [
+            "superretometer"
+          ]
+        },
+        "version": {
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "local-runner-reported"
+          ]
+        },
+        "source_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "origin",
+        "source_sha256"
+      ],
+      "additionalProperties": false
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ended_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "code": {
+      "type": "object",
+      "properties": {
+        "remote": {
+          "type": "string"
+        },
+        "canonical_remote": {
+          "type": "string"
+        },
+        "object_format": {
+          "enum": [
+            "sha1",
+            "sha256"
+          ]
+        },
+        "digest_algorithm": {
+          "enum": [
+            "path-size-sha256-json/v1"
+          ]
+        },
+        "legacy_digest_algorithm": {
+          "enum": [
+            "sorted-concatenated-content-sha256/v0"
+          ]
+        },
+        "source_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "lockfile_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "before": {
+          "type": "object",
+          "properties": {
+            "commit": {
+              "type": "string",
+              "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"
+            },
+            "branch": {
+              "type": "string"
+            },
+            "clean": {
+              "type": "boolean"
+            },
+            "status_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "diff_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "source_manifest": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                },
+                "required": [
+                  "path",
+                  "size",
+                  "sha256"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "source_manifest_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "legacy_blob_digest": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "lockfiles": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                },
+                "required": [
+                  "path",
+                  "size",
+                  "sha256"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "submodules": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "commit": {
+                    "type": "string",
+                    "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"
+                  },
+                  "repo_remote_canonical": {
+                    "type": "string"
+                  },
+                  "repo_remote_sanitized": {
+                    "type": "string"
+                  },
+                  "initialized": {
+                    "type": "boolean"
+                  },
+                  "clean": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "path",
+                  "commit",
+                  "repo_remote_canonical",
+                  "repo_remote_sanitized",
+                  "initialized",
+                  "clean"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "commit",
+            "branch",
+            "clean",
+            "status_sha256",
+            "diff_sha256",
+            "source_manifest",
+            "source_manifest_sha256",
+            "legacy_blob_digest",
+            "lockfiles",
+            "submodules",
+            "errors"
+          ],
+          "additionalProperties": false
+        },
+        "after": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "commit": {
+                  "type": "string",
+                  "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"
+                },
+                "branch": {
+                  "type": "string"
+                },
+                "clean": {
+                  "type": "boolean"
+                },
+                "status_sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "diff_sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "source_manifest": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "size": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "sha256": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "size",
+                      "sha256"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "source_manifest_sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "legacy_blob_digest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "lockfiles": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "size": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "sha256": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "size",
+                      "sha256"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "submodules": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "commit": {
+                        "type": "string",
+                        "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"
+                      },
+                      "repo_remote_canonical": {
+                        "type": "string"
+                      },
+                      "repo_remote_sanitized": {
+                        "type": "string"
+                      },
+                      "initialized": {
+                        "type": "boolean"
+                      },
+                      "clean": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "commit",
+                      "repo_remote_canonical",
+                      "repo_remote_sanitized",
+                      "initialized",
+                      "clean"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "errors": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "commit",
+                "branch",
+                "clean",
+                "status_sha256",
+                "diff_sha256",
+                "source_manifest",
+                "source_manifest_sha256",
+                "legacy_blob_digest",
+                "lockfiles",
+                "submodules",
+                "errors"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "worktree_digest_algorithm": {
+          "const": "staged-unstaged-untracked-sha256-json/v1"
+        }
+      },
+      "required": [
+        "remote",
+        "canonical_remote",
+        "object_format",
+        "digest_algorithm",
+        "legacy_digest_algorithm",
+        "source_paths",
+        "lockfile_paths",
+        "before",
+        "after",
+        "worktree_digest_algorithm"
+      ],
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": "object",
+      "properties": {
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "exited",
+            "signaled",
+            "timed_out",
+            "not_run"
+          ]
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "signal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "timeout_seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "argv_template": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "cwd_binding": {
+          "const": "configured-repository-root"
+        }
+      },
+      "required": [
+        "argv",
+        "cwd",
+        "outcome",
+        "exit_code",
+        "signal",
+        "timeout_seconds",
+        "argv_template",
+        "cwd_binding"
+      ],
+      "additionalProperties": false
+    },
+    "parser": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "counts-json/v1",
+            "junit/v1",
+            "unknown/v1"
+          ]
+        },
+        "version": {
+          "enum": [
+            1
+          ]
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "version",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "tests": {
+      "type": "object",
+      "properties": {
+        "counts": {
+          "type": "object",
+          "properties": {
+            "discovered": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "executed": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "passed": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "failed": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "skipped": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          },
+          "required": [
+            "discovered",
+            "executed",
+            "passed",
+            "failed",
+            "skipped"
+          ],
+          "additionalProperties": false
+        },
+        "selected_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "counts",
+        "selected_ids"
+      ],
+      "additionalProperties": false
+    },
+    "claim": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "declared_remote": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requested_commit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "falsifier": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "title",
+        "scope",
+        "declared_remote",
+        "requested_commit",
+        "falsifier"
+      ],
+      "additionalProperties": false
+    },
+    "acceptance": {
+      "type": "object",
+      "properties": {
+        "expected_executed": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "required_zero_failures": {
+          "type": "boolean"
+        },
+        "no_skips": {
+          "type": "boolean"
+        },
+        "required_test_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "expected_executed",
+        "required_zero_failures",
+        "no_skips",
+        "required_test_ids"
+      ],
+      "additionalProperties": false
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "os": {
+          "type": "string"
+        },
+        "architecture": {
+          "type": "string"
+        },
+        "python": {
+          "type": "string"
+        },
+        "tools": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "services": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "exclusions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "os",
+        "architecture",
+        "python",
+        "tools",
+        "services",
+        "exclusions"
+      ],
+      "additionalProperties": false
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "role": {
+            "type": "string"
+          },
+          "transformation": {
+            "enum": [
+              "unmodified",
+              "redacted"
+            ]
+          },
+          "derivation": {
+            "type": "string"
+          },
+          "locator": {
+            "enum": [
+              "bundle-relative"
+            ]
+          }
+        },
+        "required": [
+          "path",
+          "size",
+          "sha256",
+          "role",
+          "transformation",
+          "derivation",
+          "locator"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "archive": {
+      "type": "object",
+      "properties": {
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retention": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "locator",
+        "retention"
+      ],
+      "additionalProperties": false
+    },
+    "capture": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "enum": [
+            "complete",
+            "incomplete",
+            "not_run"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "state",
+        "reasons"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "run_id",
+    "producer",
+    "started_at",
+    "ended_at",
+    "code",
+    "execution",
+    "parser",
+    "tests",
+    "claim",
+    "acceptance",
+    "environment",
+    "artifacts",
+    "archive",
+    "capture"
+  ],
+  "additionalProperties": false
+}

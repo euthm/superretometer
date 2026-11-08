@@ -359,3 +359,12 @@ reconnection and verification.
 ## License
 
 Apache-2.0. See [`LICENSE`](LICENSE).
+
+
+### Portable test evidence (proposed #18)
+
+The optional `evidence` extra adds explicit local test capture, versioned receipts,
+proposal-backed scoped import, existing gate/warrant evaluation and offline bundle
+verification. Start with [the public reference workflow](examples/test_evidence/README.md)
+and [the proposed contract](spec/TEST_EVIDENCE.md). It does not change a running MCP
+server or automatically connect to private Memory projects.
