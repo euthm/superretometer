@@ -7,12 +7,16 @@ Date: 8 November 2026. This is a preparation record, not a performance report.
 - Public evidence reference: PR #20, source commit
   `775362cbb2395860c09f05b724c403359697efae`.
 - The operator reported local AI1 `main` fast-forwarded to this commit. At the
-  preparation check GitHub PR #20 remained open and remote main remained
-  `a86b3f547a5494fe906dbdd09a617eadd1bf0ce7`. Local state is not remote merge proof.
+  first preparation check GitHub PR #20 remained open and remote main was
+  `a86b3f547a5494fe906dbdd09a617eadd1bf0ce7`. The operator then completed the
+  remote merge. A subsequent GitHub read verified PR #20 closed with merged=true
+  and remote main at `775362cbb2395860c09f05b724c403359697efae`.
+  The distinction is preserved: local state alone was not remote merge proof.
 - This preparation is based on the #18 source commit. It makes no runtime,
   private Memory adapter, OpenCode config, model server or application changes.
 - Issue #18 was administratively closed as the accepted public reference delivery;
-  this is explicitly separate from remote merge and permanent installation.
+  remote merge is now independently confirmed. Permanent installation/runtime
+  bindings still require checks on the target machine.
 
 ## Ready for review
 
