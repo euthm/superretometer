@@ -21,13 +21,14 @@ from cognitive_harness.evidence.contracts import EvidenceError, canonical, load,
 
 GATES = ("provenance", "scope", "worktree", "test", "falsifiability", "dependency", "freshness")
 POLICY_FIELDS = {"schema_version", "command", "parser", "minimum_executed",
-                 "required_test_ids", "allowed_skipped_ids", "lockfiles",
-                 "timeout_seconds", "scope"}
+                  "required_test_ids", "allowed_skipped_ids", "lockfiles",
+                  "timeout_seconds", "scope"}
+OPTIONAL_POLICY_FIELDS = {"source_paths"}
 
 
 def policy_at(path):
     policy = load(Path(path))
-    if not isinstance(policy, dict) or set(policy) != POLICY_FIELDS:
+    if not isinstance(policy, dict) or not set(policy).issuperset(POLICY_FIELDS) or not set(policy).issubset(POLICY_FIELDS | OPTIONAL_POLICY_FIELDS):
         raise EvidenceError("Merge policy has missing or unknown fields")
     if policy["schema_version"] != "ch-merge-policy/v1":
         raise EvidenceError("Unsupported merge policy version")
@@ -106,7 +107,7 @@ def capture(policy, repo, commit, expected_remote, output):
     expected_checkout(repo, commit, expected_remote)
     output = fresh_output(output, repo)
     profile = {
-        "repo": str(repo), "source_paths": tracked_sources(repo), "lockfiles": policy["lockfiles"],
+        "repo": str(repo), "source_paths": policy.get("source_paths", tracked_sources(repo)), "lockfiles": policy["lockfiles"],
         "archive": {"path": str(output / "archive"), "locator": "ci-artifact://ch-evidence",
                     "retention": "CI artifacts expire after 30 days; export to durable storage for longer audit retention"},
         "claim": {"title": "Candidate satisfies the reviewed regression policy", "scope": policy["scope"],
@@ -143,7 +144,8 @@ def validate_run(policy, repo, commit, expected_remote, receipt):
     if (code["canonical_remote"] != canonical_remote(expected_remote)
             or canonical_remote(run["claim"]["declared_remote"]) != canonical_remote(expected_remote)):
         raise EvidenceError("Receipt repository identity mismatch")
-    if code["source_paths"] != tracked_sources(repo) or code["lockfile_paths"] != sorted(policy["lockfiles"]):
+    expected_sources = policy.get("source_paths", tracked_sources(repo))
+    if code["source_paths"] != expected_sources or code["lockfile_paths"] != sorted(policy["lockfiles"]):
         raise EvidenceError("Receipt omits tracked sources or declared lockfiles")
     observed_argv = run["execution"]["argv"]
     literal_argv_matches = len(observed_argv) == len(policy["command"]) and all(
