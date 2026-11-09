@@ -160,6 +160,16 @@
       <em>informative only</em> — not that the simulation failed, but that
       the warrant chain is incomplete.
     </p>
+    <h3 class="subhead">Code-bearing claims: seven implementation gates</h3>
+    <p>
+      <strong>ImplementationGatePolicy</strong> separately checks provenance,
+      scope, worktree, test, falsifiability, dependency and freshness.
+      It binds a claim to repository identity, tested code, validator and result
+      artifacts, dependency pins and current source bytes. Passing these gates
+      is scoped implementation approval; epistemic warrant is assessed separately
+      and may remain conditional. It is not independent certification or production approval.
+      <a href="https://github.com/euthm/superretometer/blob/main/spec/WARRANT.md">Read the gate contract</a>.
+    </p>
   </div>
 </section>
 
@@ -186,12 +196,15 @@
 <section id="status">
   <div class="wrap">
     <h2>Implemented Today vs Ambitions</h2>
+<!-- BEGIN generated:package-metadata -->
     <p>
-      Package version: <strong>0.7.0</strong>
+      Repository package version: <strong>0.7.1</strong>
       (<a href="https://github.com/euthm/superretometer/blob/main/pyproject.toml" target="_blank" rel="noopener">pyproject.toml</a>).
-      Latest published release notes:
-      <a href="releases/v0.6.4.md">v0.6.4</a>.
+      <a href="releases/v0.7.1.md">Version notes</a> describe their release status;
+      <a href="https://github.com/euthm/superretometer/blob/main/CHANGELOG.md">the changelog</a>
+      tracks subsequent changes on main. This is not a published-package or running-server version check.
     </p>
+<!-- END generated:package-metadata -->
     <h3 class="subhead">Implemented (reference implementation)</h3>
     <ul class="contrib-list">
       <li><strong>Structural epistemic warrant</strong> from provenance graph topology</li>
@@ -200,10 +213,14 @@
       <li><strong>Supersession with transitive impact propagation</strong></li>
       <li><strong>Threads of Reasoning</strong> with viewpoint traversal</li>
       <li><strong>SimulationGatePolicy</strong> four-gate design warrant</li>
+      <li><strong>ImplementationGatePolicy</strong> seven implementation gates: provenance, scope, worktree, test, falsifiability, dependency and freshness</li>
+      <li><strong>Portable test evidence (#18)</strong>: record, verify, import, evaluate and export checksummed bundles via the optional <code>evidence</code> extra. <a href="https://github.com/euthm/superretometer/tree/main/examples/test_evidence">Public reference workflow</a>.</li>
+      <li><strong>Manual checkpoint handover (#19)</strong>: <code>checkpoint create/list/restore/inject</code>, integrity and project validation, source checks and budgeted context rendering. The default <code>char_proxy</code> estimator is approximate and covers the checkpoint/preamble, not the full model request.</li>
       <li>CLI / MCP packaging; zero required runtime dependencies</li>
     </ul>
     <h3 class="subhead">Ambitions / research direction</h3>
     <ul class="contrib-list">
+      <li>Automatic OpenCode/MCP checkpoint injection and compaction hooks; the current CLI handover is explicit</li>
       <li>Broader multi-domain tooling and richer agent integrations</li>
       <li>Longer-horizon learning loops over persistent engineering memory</li>
       <li>Research relevance to non-decaying, testable world models — not claimed as shipped product features</li>

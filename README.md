@@ -4,7 +4,10 @@
 
 ## Repository version and updates
 
-The current repository package version is **0.7.0** (see `pyproject.toml`).
+<!-- BEGIN generated:package-metadata -->
+The current repository package version is **0.7.1** (see `pyproject.toml`).
+[Version notes](docs/releases/v0.7.1.md) describe their release status; [the changelog](CHANGELOG.md) tracks subsequent changes on main.
+<!-- END generated:package-metadata -->
 A Git checkout, a published package and a running MCP process can be different
 revisions. [Update and verify a local MCP installation](docs/local-update.md).
 
@@ -346,7 +349,7 @@ is not endorsed by the original authors. See `docs/` for detailed attribution.
 
 ## Project status
 
-Repository package version **0.7.0** includes the packaged MCP server/CLI,
+The repository includes the packaged MCP server/CLI,
 provenance and warrant corrections, and code-freshness checking. The project is
 classified as Alpha in `pyproject.toml`; a passing example is not production
 approval. The conformance suite defines the behavioral contract.
@@ -361,10 +364,23 @@ reconnection and verification.
 Apache-2.0. See [`LICENSE`](LICENSE).
 
 
-### Portable test evidence (proposed #18)
+### Portable test evidence (#18)
 
 The optional `evidence` extra adds explicit local test capture, versioned receipts,
 proposal-backed scoped import, existing gate/warrant evaluation and offline bundle
 verification. Start with [the public reference workflow](examples/test_evidence/README.md)
-and [the proposed contract](spec/TEST_EVIDENCE.md). It does not change a running MCP
+and [the evidence contract](spec/TEST_EVIDENCE.md). It does not change a running MCP
 server or automatically connect to private Memory projects.
+
+
+### Manual checkpoint handover (#19)
+
+`superretometer checkpoint {create,list,restore,inject}` persists and validates
+project-scoped context and renders a preamble for a new session. Integrity,
+project, source and budget checks help detect an unsafe restore. The default
+`char_proxy` token estimate is approximate; its budget covers the rendered
+checkpoint/preamble, not the full model request. Automatic OpenCode/MCP hooks
+and automatic replacement of client compaction remain unimplemented.
+
+For website/package metadata maintenance, see
+[the documentation publishing procedure](docs/local-update.md#website-and-package-metadata).
