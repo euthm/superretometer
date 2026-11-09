@@ -106,6 +106,27 @@ Capture/check return nonzero on rejection. `check` returns zero only after
 baseline approval, correct negative controls and final bundle verification.
 An empty report or a zero command exit with no observed tests cannot pass.
 
+## Large repositories
+
+Observation reuses one NUL-delimited Git index snapshot for tracked membership;
+Git process count does not grow with the source count. Every declared file is
+still hashed and the merge adapter still covers all tracked regular files. This
+removes subprocess fan-out, not filesystem/hash/JSON costs; benchmark actual
+large repositories before claiming throughput. A timeout or missing receipt is
+BLOCKED evidence, not permission to substitute a manual passing count.
+
+Measure filenames with NUL delimiters (not bytes or filesystem entries):
+
+```sh
+git rev-parse --show-toplevel
+git ls-files -z | python3 -c 'import sys; print(sys.stdin.buffer.read().count(b"\0"))'
+```
+
+A sparse/smaller checkout does not automatically redefine the tested source set.
+Do not remove tracked files, weaken coverage, or reuse old receipts to force a
+pass. A deliberately narrower acceptance scope needs a separately reviewed
+contract and policy.
+
 ## Trust boundary and H2
 
 The recorder is not an independent observer. Malicious candidate/test code can

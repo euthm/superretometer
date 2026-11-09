@@ -25,6 +25,10 @@ All notable changes to cognitive-harness (Superretometer).
   target locks. Unsupported private backends fail rather than imply integration.
 
 ### Fixed
+- Evidence observation reuses its captured Git index for exact source/lockfile
+  membership instead of launching a Git subprocess per file. Full source hashes,
+  status and index/diff fingerprints remain; untracked/ignored files still fail.
+  Literal pathspec characters cannot masquerade as tracked paths.
 - Checkpoint subprocess hash test now reloads the same stored checkpoint in a
   fresh process; separate creations have timestamps and cannot require equal hashes.
   Use the current interpreter for subprocess tests and retain timestamp tamper coverage.

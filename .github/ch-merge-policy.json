@@ -16,7 +16,7 @@
     "kind": "junit/v1",
     "report": "results.xml"
   },
-  "minimum_executed": 402,
+  "minimum_executed": 406,
   "required_test_ids": [
     "tests.adversarial.test_v05::test_calibrated",
     "tests.adversarial.test_v05::test_canonical_dependent",
@@ -43,6 +43,10 @@
     "tests.conformance.test_enumeration_completeness.TestEnumerationCompleteness::test_enumeration_complete_default_false",
     "tests.conformance.test_enumeration_completeness.TestEnumerationCompleteness::test_local_operations_not_affected_by_completeness",
     "tests.conformance.test_enumeration_completeness.TestEnumerationCompleteness::test_partial_graph_cannot_sneak_anti_pattern",
+    "tests.conformance.test_evidence_observation_scaling::test_git_pathspec_wildcards_cannot_make_an_untracked_file_look_tracked",
+    "tests.conformance.test_evidence_observation_scaling::test_git_process_count_is_constant_and_all_files_are_hashed",
+    "tests.conformance.test_evidence_observation_scaling::test_untracked_and_ignored_sources_are_still_rejected[ignored.py]",
+    "tests.conformance.test_evidence_observation_scaling::test_untracked_and_ignored_sources_are_still_rejected[untracked.py]",
     "tests.conformance.test_identity::test_identity_across_operations",
     "tests.conformance.test_identity::test_logical_identity",
     "tests.conformance.test_impact::test_impact_marks_review_required",
