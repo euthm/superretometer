@@ -1,4 +1,4 @@
-# Portable test evidence (v1, proposed in #18)
+# Portable test evidence (v1, introduced in #18)
 
 This additive contract is submitted for spec review. It does not change the seven
 ImplementationGatePolicy gates, warrant, independence, truth-category defaults,
@@ -237,3 +237,28 @@ UNKNOWN, 4 = failed domain acceptance or nonapproved evaluation. Child exit code
 is a separate receipt/output field. `verify` exit 0 certifies included byte/
 contract integrity only; `import` exit 0 means durable scoped import, not approval.
 The machine-readable JSON response states the actual verdicts.
+
+## Operational merge adapter (ch-merge-policy/v1)
+
+The optional `scripts/ch_merge_guard.py` composes this contract without changing
+warrant or gate algorithms. Its reviewed policy is an external acceptance input,
+not a policy chosen by the execution receipt. The policy declares exact argv,
+structured parser/report, positive minimum execution count, required executed
+regression IDs, explicitly allowed optional JUnit skip IDs, tracked lockfiles,
+positive timeout and bounded scope. Unknown keys/versions are rejected.
+
+The adapter requires the externally expected full commit and canonical repository,
+clean matching pre/post states and receipt source coverage for every tracked
+regular file (recursive submodule pins separately). Verification reparses results,
+rejects absent/failed/unknown execution, checks the reviewed policy and never
+executes candidate receipt commands. A required test MUST NOT be satisfied by a
+skipped testcase. A counts-json runner cannot claim per-test skip exceptions.
+
+Approval additionally requires existing baseline approval/all seven gates PASS,
+a commit-only negative control that blocks test without changing other gate
+statuses, a missing-validator control that leaves test UNKNOWN/unapproved, and
+verified export. Raw warrant and dependent runner provenance remain unchanged.
+See `docs/merge-guard.md` for job credential isolation, bootstrap, required-check
+settings, reviewer independence, artifact expiry and unsupported fork/merge-queue
+scope. Source integrity does not authenticate observations. This adapter cannot
+prove that GitHub branch protection has been enabled or that a producer is honest.

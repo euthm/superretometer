@@ -384,3 +384,12 @@ and automatic replacement of client compaction remain unimplemented.
 
 For website/package metadata maintenance, see
 [the documentation publishing procedure](docs/local-update.md#website-and-package-metadata).
+
+### CI merge evidence guard
+
+[The merge guard](docs/merge-guard.md) composes #18 capture, source/receipt
+verification, existing gates, isolated negative controls and export. Its reviewed
+policy and separate verifier job come from main; H2 can propose a PR but cannot
+execute candidate code with the check-publishing credential. Repository settings
+must separately require `CH evidence` and human review before this is enforced.
+The bootstrap and live activation controls are explicit; no auto-merge is added.

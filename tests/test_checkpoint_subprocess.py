@@ -16,13 +16,24 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
 
-CLI = ["python", "-m", "cognitive_harness.cli"]
+CLI = [sys.executable, "-m", "cognitive_harness.cli"]
+
+
+def test_timestamp_is_integrity_protected_without_a_wall_clock_race():
+    from cognitive_harness.model.checkpoint import Checkpoint, CheckpointIntegrityError
+    first = Checkpoint(project_id="hash-fixture", timestamp="2026-11-09T00:00:00Z")
+    second = Checkpoint(project_id="hash-fixture", timestamp="2026-11-09T00:00:01Z")
+    assert first.content_hash != second.content_hash
+    first.timestamp = second.timestamp
+    with pytest.raises(CheckpointIntegrityError):
+        first.verify_integrity()
 
 
 def run_checkpoint(*args, cwd: Path, check: bool = True) -> subprocess.CompletedProcess:
@@ -112,7 +123,11 @@ class TestHappyPath:
         assert content_hash[:16] in inject.stdout
 
     def test_content_hash_stable(self, workdir: Path):
-        """Same content → same content_hash across process restarts."""
+        """Reload the SAME persisted checkpoint in a fresh process.
+
+        Creating another checkpoint also creates another timestamp; comparing
+        those hashes made this test depend on crossing a wall-clock second.
+        """
         cp_dir = workdir / "checkpoints"
 
         r1 = run_checkpoint(
@@ -126,23 +141,21 @@ class TestHappyPath:
             "--output-dir", str(cp_dir),
             cwd=workdir,
         )
-        h1 = json.loads(r1.stdout)["content_hash"]
-
-        r2 = run_checkpoint(
-            "create",
-            "--project-id", "stable-hash",
-            "--project-name", "HashTest",
-            "--repo", str(workdir),
-            "--branch", "main",
-            "--sha", "aaa123",
-            "--goal", "Stable goal",
-            "--output-dir", str(cp_dir),
-            cwd=workdir,
+        created = json.loads(r1.stdout)
+        stored = cp_dir / f"{created['checkpoint_id']}.json"
+        before = stored.read_bytes()
+        r2 = subprocess.run(
+            [sys.executable, "-c",
+             "import json,sys; from pathlib import Path; "
+             "from cognitive_harness.orchestration.checkpoint_manager import CheckpointManager; "
+             "cp=CheckpointManager(checkpoint_dir=Path(sys.argv[1])).load(sys.argv[2]); "
+             "print(json.dumps({'checkpoint_id':cp.checkpoint_id,'content_hash':cp.content_hash}))",
+             str(cp_dir), created["checkpoint_id"]],
+            cwd=workdir, capture_output=True, text=True, check=True,
         )
-        h2 = json.loads(r2.stdout)["content_hash"]
-
-        # Same content → same hash (different checkpoint_id)
-        assert h1 == h2
+        loaded = json.loads(r2.stdout)
+        assert loaded == {k: created[k] for k in ("checkpoint_id", "content_hash")}
+        assert stored.read_bytes() == before
 
 
 # ── Negative Cases ──────────────────────────────────────────────────────

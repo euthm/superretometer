@@ -1,21 +1,27 @@
 # Superretometer CODEOWNERS
 #
-# Maintainer placeholders — replace with actual GitHub handles before enabling
-# "Require review from Code Owners" in branch protection rules.
+# Enable "Require review from Code Owners" separately in branch protection.
+# A PR authored as euthm needs another eligible human maintainer to approve;
+# add that actual maintainer here, or use a distinct H2 bot identity for PRs.
 #
 # Pattern: <path> <owner1> <owner2> ...
 
 # Specification — normative; requires maintainer review
-/spec/ @maintainers
+/spec/ @euthm
 
 # Conformance tests — defines behavioral contract
-/tests/conformance/ @maintainers
+/tests/ @euthm
 
 # Reference implementation
-/cognitive_harness/ @maintainers
+/cognitive_harness/ @euthm
 
 # Transport layer
-/transports/ @maintainers
+/transports/ @euthm
 
 # Website
-/docs/ @maintainers
+/docs/ @euthm
+
+# H2 candidates must not approve changes to their own controls.
+/.github/ @euthm
+/scripts/ @euthm
+/pyproject.toml @euthm
