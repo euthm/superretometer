@@ -51,6 +51,11 @@ def observe(repo: Path, sources: list[str], locks: list[str]) -> dict:
     staged = git(repo, "diff", "--no-ext-diff", "--no-textconv", "--binary", "--cached", "HEAD", "--")
     unstaged = git(repo, "diff", "--no-ext-diff", "--no-textconv", "--binary", "--")
     index = git(repo, "ls-files", "--stage", "-z")
+    # Reuse the exact index snapshot already included in diff_sha256. Starting
+    # a new Git process for every source/lockfile made large captures impractical.
+    # Keep paths as bytes: unrelated non-UTF-8 names need not be decoded, and
+    # glob/pathspec characters in a declared name must be matched literally.
+    tracked_paths = {entry.split(b"\t", 1)[1] for entry in index.split(b"\0") if entry}
     untracked = []
     for raw in git(repo, "ls-files", "--others", "--exclude-standard", "-z").split(b"\0"):
         if not raw:
@@ -84,8 +89,7 @@ def observe(repo: Path, sources: list[str], locks: list[str]) -> dict:
         if not initialized or not rem or not clean:
             errors.append(f"Submodule unavailable, dirty, or missing remote: {path}")
     for entry in files + lockfiles:
-        tracked = git(repo, "ls-files", "--error-unmatch", "--", entry["path"], check=False)
-        if not tracked:
+        if entry["path"].encode("utf-8") not in tracked_paths:
             errors.append(f"Declared input is not tracked by Git: {entry['path']}")
     complete = len(files) == len(sources) and bool(sources)
     return {"commit": git(repo, "rev-parse", "HEAD").decode().strip(),
