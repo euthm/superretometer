@@ -5,6 +5,11 @@ All notable changes to cognitive-harness (Superretometer).
 ## [Unreleased]
 
 ### Added
+- Fail-closed CI merge adapter around #18: reviewed regression policy, complete
+  tracked-file coverage, exact commit/repository binding, seven gates, isolated
+  negative controls and verified bundle export. A default-branch workflow keeps
+  candidate execution separate from the check-publishing credential; required
+  status/reviewer settings remain an explicit administrator activation step.
 - Manual checkpoint handover (#19): versioned integrity-checked checkpoints,
   project/source validation, budgeted context rendering and explicit
   `checkpoint create/list/restore/inject` CLI commands. Automatic OpenCode/MCP
@@ -18,6 +23,11 @@ All notable changes to cognitive-harness (Superretometer).
   validator controls, no private services, and failure/tampering conformance tests.
 - Explicit retention/locators, configured redaction, scoped snapshots and POSIX
   target locks. Unsupported private backends fail rather than imply integration.
+
+### Fixed
+- Checkpoint subprocess hash test now reloads the same stored checkpoint in a
+  fresh process; separate creations have timestamps and cannot require equal hashes.
+  Use the current interpreter for subprocess tests and retain timestamp tamper coverage.
 
 ### Clarified
 - Implementation policy has seven gates; PASS is dimension-specific and is not
