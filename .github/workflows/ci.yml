@@ -24,6 +24,9 @@ jobs:
       - name: Install package
         run: pip install -e ".[dev]"
 
+      - name: Check website and README package metadata
+        run: python3 scripts/sync_site_metadata.py --check
+
       - name: Run test suite
         run: python3 -m pytest tests/ -v
 

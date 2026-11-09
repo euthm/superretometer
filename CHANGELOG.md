@@ -5,6 +5,10 @@ All notable changes to cognitive-harness (Superretometer).
 ## [Unreleased]
 
 ### Added
+- Manual checkpoint handover (#19): versioned integrity-checked checkpoints,
+  project/source validation, budgeted context rendering and explicit
+  `checkpoint create/list/restore/inject` CLI commands. Automatic OpenCode/MCP
+  hooks remain outside the implemented scope; token counts default to estimates.
 - Portable test-evidence workflow (#18): optional evidence SDK/CLI for explicit
   argv capture, schema/byte verification, proposal-backed portable target import,
   existing gate/warrant evaluation and checksummed third-party bundle export.
@@ -20,6 +24,10 @@ All notable changes to cognitive-harness (Superretometer).
   independent certification. Existing policy/warrant algorithms are unchanged.
 
 ### Documentation
+- Synchronize website/README package metadata from `pyproject.toml` and check
+  for drift in CI; distinguish version notes from a published package release.
+- Document portable evidence, manual checkpoint handover and the seven
+  implementation gates on the public website.
 - Record StrategyServer as the maintainer's current external strategy workflow,
   replacing the previous local EPF workflow.
 - Clarify the boundary between external strategy/planning, Superretometer evidence

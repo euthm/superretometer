@@ -124,3 +124,24 @@ To test your own already-running compatible local Julia service, add
 reported FAIL and never changes CH gates. Do not tune the expected labels to
 make a model pass. See [the smoke-test README](../examples/toolchain_pilot/README.md)
 for the endpoint contract, artifact locations and exit codes.
+
+
+## Website and package metadata
+
+GitHub Pages publishes the checked-in `docs/` website. A successful deployment
+can still display stale text if that text was not updated in Git.
+`pyproject.toml` is the source for the package-version blocks in `README.md`
+and `docs/index.html`. After a version change, add the matching version notes,
+then run from the repository root:
+
+```sh
+python3 scripts/sync_site_metadata.py
+python3 scripts/sync_site_metadata.py --check
+```
+
+Commit the generated blocks with the version change. CI runs the check on PRs
+and main; it reports drift without changing files. Capability descriptions still
+require review alongside implementation changes. The website reflects the
+merged documentation after Pages deployment; unmerged branches, local editable
+installs and running MCP processes may have different revisions. These blocks
+do not assert that the package has been published to PyPI.
