@@ -11,19 +11,21 @@ mode that provides complete source binding without policy author discretion.
 
 **bounded**: Policy declares ``source_paths`` together with ``coverage_mode``
 and ``coverage_rationale``. Only the declared paths are hashed. A mandatory
-minimum set (source, tests, lockfiles) is enforced. Runner and policy are
-included when they live inside the candidate worktree.
+minimum set (source, tests, lockfiles, runner, policy) is enforced. Runner
+and policy are included when they live inside the candidate worktree.
 
 Guard identity
 --------------
 ``policy_sha256`` hashes the reviewed policy JSON, not the guard code.
-Control identity is bound to the guard commit and source hash recorded in
-the evaluation's gate evidence. The separate verifier job must use the same
-guard version — typically pinned to a reviewed commit tag.
+Guard identity is recorded as a tool observation in the receipt
+(`environment.tools["ch_merge_guard"]`) and verified in ``check``:
+the hash stored in the receipt must match the guard executing check.
+Mismatch rejects the receipt.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -43,6 +45,53 @@ POLICY_FIELDS = {"schema_version", "command", "parser", "minimum_executed",
 # Bounded-coverage fields — all three required together.
 BOUNDED_FIELDS = {"coverage_mode", "source_paths", "coverage_rationale"}
 
+# Minimum set patterns for bounded mode.
+# If any tracked file's lowercase path contains any pattern, it MUST be in source_paths.
+# Patterns target the runner script (executes the test suite) and the merge policy (defines acceptance).
+REQUIRED_ROLES = {
+    "runner": ["test_runner", "runner_v", "run_tests", "hrrm_test_runner"],
+    "policy": ["merge_policy", "hrrm_merge_policy"],
+}
+
+
+def _basename_matches(filename, patterns):
+    """Check if the lowercase filename matches any pattern substring."""
+    name_lower = filename.lower()
+    for pat in patterns:
+        if pat.lower() in name_lower:
+            return True
+    return False
+
+
+def _guard_source_sha():
+    """Hash this guard script for identity binding."""
+    this_file = Path(__file__).resolve()
+    return sha(this_file.read_bytes())
+
+
+def _tracked_file_set(repo):
+    """Return a set of tracked regular file paths (not submodules)."""
+    tracked = set()
+    for entry in git(repo, "ls-files", "--stage", "-z").split(b"\0"):
+        if not entry:
+            continue
+        header, name = entry.split(b"\t", 1)
+        mode, _, stage = header.decode().split()
+        if stage != "0":
+            raise EvidenceError("Unmerged Git index")
+        if mode in ("100644", "100755"):
+            tracked.add(name.decode("utf-8"))
+    return tracked
+
+
+def _has_tracked_matching(repo, patterns):
+    """Check if any tracked file matches any of the given patterns (basename substring, case-insensitive)."""
+    tracked = _tracked_file_set(repo)
+    for f in tracked:
+        if _basename_matches(f, patterns):
+            return True, f
+    return False, None
+
 
 def _validate_source_paths(source_paths, repo):
     """Validate source_paths: correct type, non-empty, unique, tracked regular files.
@@ -54,22 +103,28 @@ def _validate_source_paths(source_paths, repo):
     for p in source_paths:
         if not isinstance(p, str) or not p:
             raise EvidenceError(f"source_paths entry is not a non-empty string: {p!r}")
-    # Check each path is a tracked regular file (not submodule, not untracked)
-    index = git(repo, "ls-files", "--stage", "-z")
-    tracked = {}
-    for entry in index.split(b"\0"):
-        if not entry:
-            continue
-        header, name = entry.split(b"\t", 1)
-        mode, _, stage = header.decode().split()
-        if stage != "0":
-            raise EvidenceError("Unmerged Git index")
-        if mode in ("100644", "100755"):
-            tracked[name.decode("utf-8")] = mode
+    tracked = _tracked_file_set(repo)
     for p in source_paths:
         if p not in tracked:
             raise EvidenceError(f"source_paths entry '{p}' is not a tracked regular file")
     return sorted(source_paths)
+
+
+def _enforce_minimum_set(source_paths, repo):
+    """Enforce that required role files are included in source_paths when they exist.
+    
+    Checks for runner and policy files. If a tracked file matches a required role
+    pattern but is not in source_paths, raises EvidenceError.
+    """
+    paths_set = set(source_paths)
+    for role, patterns in REQUIRED_ROLES.items():
+        found, filename = _has_tracked_matching(repo, patterns)
+        if found and filename not in paths_set:
+            raise EvidenceError(
+                f"Bounded coverage missing required {role} file: "
+                f"'{filename}' is tracked but not in source_paths. "
+                f"All tracked {role} artifacts must be declared."
+            )
 
 
 def policy_at(path):
@@ -140,14 +195,16 @@ def tracked_sources(repo):
 
 
 def effective_source_paths(policy, repo):
-    """Return the source_paths to use, validated and sorted.
+    """Return the source_paths to use, validated, minimum-set enforced, and sorted.
 
-    For bounded mode, validates against tracked files. For full mode,
-    returns all tracked sources. Order is normalised (sorted) identically
-    in capture and check.
+    For bounded mode, validates against tracked files and enforces minimum set.
+    For full mode, returns all tracked sources. Order is normalised (sorted)
+    identically in capture and check.
     """
     if "coverage_mode" in policy and policy["coverage_mode"] == "bounded":
-        return _validate_source_paths(policy["source_paths"], repo)
+        validated = _validate_source_paths(policy["source_paths"], repo)
+        _enforce_minimum_set(validated, repo)
+        return validated
     return tracked_sources(repo)
 
 
@@ -174,10 +231,15 @@ def fresh_output(output, repo):
     return output
 
 
-def _guard_source_sha():
-    """Hash this guard script for identity binding."""
-    this_file = Path(__file__).resolve()
-    return sha(this_file.read_bytes())
+def _guard_tool_command():
+    """Return a valid tool command that outputs the guard source hash.
+    
+    This is recorded in environment.tools and executed by record().
+    The output (the hash string) is stored in the receipt at
+    environment.tools["ch_merge_guard"].
+    """
+    guard_sha = _guard_source_sha()
+    return [sys.executable, "-c", f"import sys; sys.stdout.write({guard_sha!r})"]
 
 
 def capture(policy, repo, commit, expected_remote, output):
@@ -193,19 +255,39 @@ def capture(policy, repo, commit, expected_remote, output):
                   "declared_remote": expected_remote, "requested_commit": commit,
                   "falsifier": "Any failed or missing required test, unexpected skip, source change, or different commit invalidates this bounded claim"},
         "acceptance": acceptance_rules(policy), "parser": policy["parser"],
-        "environment": {"tools": {"python": [sys.executable, "--version"]}, "services": {},
-                        "exclusions": ["Runner-reported observations; no independent certification or production approval",
-                                       "External services and dependencies beyond declared lockfiles/submodules are not verified"]},
+        "environment": {
+            "tools": {
+                "python": [sys.executable, "--version"],
+                "ch_merge_guard": _guard_tool_command(),
+            },
+            "services": {},
+            "exclusions": [
+                "Runner-reported observations; no independent certification or production approval",
+                "External services and dependencies beyond declared lockfiles/submodules are not verified",
+            ],
+        },
         "timeout_seconds": policy["timeout_seconds"],
     }
-    # Record guard identity in environment
-    profile["environment"]["guard"] = {"source_sha256": _guard_source_sha()}
     result = record(profile, policy["command"])
     shutil.copytree(Path(result["receipt"]).parent, output / "receipt")
     # Keep the transfer small: only the finalized receipt, results and logs.
     shutil.rmtree(output / "archive")
     result["receipt"] = str(output / "receipt/run.json")
     return result
+
+
+def _receipt_guard_sha(root, run):
+    """Extract the guard source hash from the receipt's tool observations."""
+    tools = run.get("environment", {}).get("tools", {})
+    guard_sha = tools.get("ch_merge_guard")
+    if guard_sha is None:
+        raise EvidenceError(
+            "Receipt missing guard identity observation (environment.tools.ch_merge_guard). "
+            "This receipt was captured by an older guard version without identity binding."
+        )
+    if not re.fullmatch(r"[0-9a-f]{64}", guard_sha):
+        raise EvidenceError(f"Receipt guard identity is not a valid SHA-256: {guard_sha!r}")
+    return guard_sha
 
 
 def validate_run(policy, repo, commit, expected_remote, receipt):
@@ -228,6 +310,15 @@ def validate_run(policy, repo, commit, expected_remote, receipt):
     expected_sources = effective_source_paths(policy, repo)
     if code["source_paths"] != expected_sources or code["lockfile_paths"] != sorted(policy["lockfiles"]):
         raise EvidenceError("Receipt omits tracked sources or declared lockfiles")
+    # Verify guard identity: the guard that captured must be the same as the guard checking.
+    receipt_guard_sha = _receipt_guard_sha(root, run)
+    current_guard_sha = _guard_source_sha()
+    if receipt_guard_sha != current_guard_sha:
+        raise EvidenceError(
+            f"Guard identity mismatch: receipt captured with guard SHA {receipt_guard_sha}, "
+            f"but check is executing guard SHA {current_guard_sha}. "
+            f"Use the same reviewed guard version for capture and check."
+        )
     observed_argv = run["execution"]["argv"]
     literal_argv_matches = len(observed_argv) == len(policy["command"]) and all(
         re.fullmatch(re.escape(template).replace(r"\{repo\}", ".+").replace(r"\{output\}", ".+"), actual)
@@ -276,14 +367,21 @@ def check(policy, repo, commit, expected_remote, receipt, output):
     offline = verify(output / "bundle", repo=repo)
     if offline["integrity"] != "verified" or offline["source_current"] != "verified":
         raise EvidenceError("Final bundle verification failed")
-    result = {"schema_version": "ch-merge-result/v1", "approved": True, "commit": commit,
-              "repository": canonical_remote(expected_remote),
-              "policy_sha256": sha(canonical(policy)),
-              "guard_source_sha256": _guard_source_sha(),
-              "run_id": run["run_id"], "receipt_sha256": checked["receipt_sha256"],
-              "counts": run["tests"]["counts"], "baseline": baseline,
-              "negative_controls": evaluations[1:], "export": exported,
-              "trust": "Scoped CI acceptance; runner-reported, not independent certification or deployment approval"}
+    # Extract guard identity from receipt for the result
+    root = Path(receipt).parent
+    receipt_guard_sha = _receipt_guard_sha(root, run)
+    current_guard_sha = _guard_source_sha()
+    result = {
+        "schema_version": "ch-merge-result/v1", "approved": True, "commit": commit,
+        "repository": canonical_remote(expected_remote),
+        "policy_sha256": sha(canonical(policy)),
+        "guard_source_sha256": current_guard_sha,
+        "receipt_guard_sha256": receipt_guard_sha,
+        "run_id": run["run_id"], "receipt_sha256": checked["receipt_sha256"],
+        "counts": run["tests"]["counts"], "baseline": baseline,
+        "negative_controls": evaluations[1:], "export": exported,
+        "trust": "Scoped CI acceptance; runner-reported, not independent certification or deployment approval"
+    }
     write(output / "merge-result.json", result)
     return result
 
