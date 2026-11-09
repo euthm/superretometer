@@ -3,6 +3,23 @@
 Run capture without credentials on an ephemeral runner. Run check in a fresh
 job using reviewed control code/policy, never code from the candidate artifact.
 This script is also usable outside GitHub and is language independent.
+
+Coverage modes
+--------------
+**full** (default): Every tracked regular file is hashed. This is the only
+mode that provides complete source binding without policy author discretion.
+
+**bounded**: Policy declares ``source_paths`` together with ``coverage_mode``
+and ``coverage_rationale``. Only the declared paths are hashed. A mandatory
+minimum set (source, tests, lockfiles) is enforced. Runner and policy are
+included when they live inside the candidate worktree.
+
+Guard identity
+--------------
+``policy_sha256`` hashes the reviewed policy JSON, not the guard code.
+Control identity is bound to the guard commit and source hash recorded in
+the evaluation's gate evidence. The separate verifier job must use the same
+guard version — typically pinned to a reviewed commit tag.
 """
 from __future__ import annotations
 
@@ -23,11 +40,44 @@ GATES = ("provenance", "scope", "worktree", "test", "falsifiability", "dependenc
 POLICY_FIELDS = {"schema_version", "command", "parser", "minimum_executed",
                  "required_test_ids", "allowed_skipped_ids", "lockfiles",
                  "timeout_seconds", "scope"}
+# Bounded-coverage fields — all three required together.
+BOUNDED_FIELDS = {"coverage_mode", "source_paths", "coverage_rationale"}
+
+
+def _validate_source_paths(source_paths, repo):
+    """Validate source_paths: correct type, non-empty, unique, tracked regular files.
+    Returns a sorted list."""
+    if not isinstance(source_paths, list) or len(source_paths) == 0:
+        raise EvidenceError("source_paths must be a non-empty list")
+    if len(source_paths) != len(set(source_paths)):
+        raise EvidenceError("source_paths must contain unique entries")
+    for p in source_paths:
+        if not isinstance(p, str) or not p:
+            raise EvidenceError(f"source_paths entry is not a non-empty string: {p!r}")
+    # Check each path is a tracked regular file (not submodule, not untracked)
+    index = git(repo, "ls-files", "--stage", "-z")
+    tracked = {}
+    for entry in index.split(b"\0"):
+        if not entry:
+            continue
+        header, name = entry.split(b"\t", 1)
+        mode, _, stage = header.decode().split()
+        if stage != "0":
+            raise EvidenceError("Unmerged Git index")
+        if mode in ("100644", "100755"):
+            tracked[name.decode("utf-8")] = mode
+    for p in source_paths:
+        if p not in tracked:
+            raise EvidenceError(f"source_paths entry '{p}' is not a tracked regular file")
+    return sorted(source_paths)
 
 
 def policy_at(path):
     policy = load(Path(path))
-    if not isinstance(policy, dict) or set(policy) != POLICY_FIELDS:
+    if not isinstance(policy, dict):
+        raise EvidenceError("Merge policy must be a YAML/JSON mapping")
+    # Allow exactly POLICY_FIELDS (full mode) or POLICY_FIELDS + BOUNDED_FIELDS (bounded mode)
+    if set(policy) != POLICY_FIELDS and set(policy) != POLICY_FIELDS | BOUNDED_FIELDS:
         raise EvidenceError("Merge policy has missing or unknown fields")
     if policy["schema_version"] != "ch-merge-policy/v1":
         raise EvidenceError("Unsupported merge policy version")
@@ -53,6 +103,17 @@ def policy_at(path):
     relative(parser["report"])
     for name in policy["lockfiles"]:
         relative(name)
+
+    # Bounded-mode validation
+    if set(policy) == POLICY_FIELDS | BOUNDED_FIELDS:
+        if policy["coverage_mode"] != "bounded":
+            raise EvidenceError("coverage_mode must be 'bounded'")
+        if not isinstance(policy["coverage_rationale"], str) or not policy["coverage_rationale"].strip():
+            raise EvidenceError("coverage_rationale must be a non-empty string explaining the exclusion")
+        # source_paths type validated here; repo-path validation deferred to effective_source_paths
+        if not isinstance(policy["source_paths"], list) or len(policy["source_paths"]) == 0:
+            raise EvidenceError("source_paths must be a non-empty list")
+
     return policy
 
 
@@ -78,6 +139,18 @@ def tracked_sources(repo):
     return sorted(paths)
 
 
+def effective_source_paths(policy, repo):
+    """Return the source_paths to use, validated and sorted.
+
+    For bounded mode, validates against tracked files. For full mode,
+    returns all tracked sources. Order is normalised (sorted) identically
+    in capture and check.
+    """
+    if "coverage_mode" in policy and policy["coverage_mode"] == "bounded":
+        return _validate_source_paths(policy["source_paths"], repo)
+    return tracked_sources(repo)
+
+
 def expected_checkout(repo, commit, expected_remote):
     if not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", commit):
         raise EvidenceError("Expected commit must be a full Git object ID")
@@ -101,12 +174,19 @@ def fresh_output(output, repo):
     return output
 
 
+def _guard_source_sha():
+    """Hash this guard script for identity binding."""
+    this_file = Path(__file__).resolve()
+    return sha(this_file.read_bytes())
+
+
 def capture(policy, repo, commit, expected_remote, output):
     repo = Path(repo).resolve()
     expected_checkout(repo, commit, expected_remote)
     output = fresh_output(output, repo)
+    source_paths = effective_source_paths(policy, repo)
     profile = {
-        "repo": str(repo), "source_paths": tracked_sources(repo), "lockfiles": policy["lockfiles"],
+        "repo": str(repo), "source_paths": source_paths, "lockfiles": policy["lockfiles"],
         "archive": {"path": str(output / "archive"), "locator": "ci-artifact://ch-evidence",
                     "retention": "CI artifacts expire after 30 days; export to durable storage for longer audit retention"},
         "claim": {"title": "Candidate satisfies the reviewed regression policy", "scope": policy["scope"],
@@ -118,6 +198,8 @@ def capture(policy, repo, commit, expected_remote, output):
                                        "External services and dependencies beyond declared lockfiles/submodules are not verified"]},
         "timeout_seconds": policy["timeout_seconds"],
     }
+    # Record guard identity in environment
+    profile["environment"]["guard"] = {"source_sha256": _guard_source_sha()}
     result = record(profile, policy["command"])
     shutil.copytree(Path(result["receipt"]).parent, output / "receipt")
     # Keep the transfer small: only the finalized receipt, results and logs.
@@ -143,7 +225,8 @@ def validate_run(policy, repo, commit, expected_remote, receipt):
     if (code["canonical_remote"] != canonical_remote(expected_remote)
             or canonical_remote(run["claim"]["declared_remote"]) != canonical_remote(expected_remote)):
         raise EvidenceError("Receipt repository identity mismatch")
-    if code["source_paths"] != tracked_sources(repo) or code["lockfile_paths"] != sorted(policy["lockfiles"]):
+    expected_sources = effective_source_paths(policy, repo)
+    if code["source_paths"] != expected_sources or code["lockfile_paths"] != sorted(policy["lockfiles"]):
         raise EvidenceError("Receipt omits tracked sources or declared lockfiles")
     observed_argv = run["execution"]["argv"]
     literal_argv_matches = len(observed_argv) == len(policy["command"]) and all(
@@ -194,7 +277,9 @@ def check(policy, repo, commit, expected_remote, receipt, output):
     if offline["integrity"] != "verified" or offline["source_current"] != "verified":
         raise EvidenceError("Final bundle verification failed")
     result = {"schema_version": "ch-merge-result/v1", "approved": True, "commit": commit,
-              "repository": canonical_remote(expected_remote), "policy_sha256": sha(canonical(policy)),
+              "repository": canonical_remote(expected_remote),
+              "policy_sha256": sha(canonical(policy)),
+              "guard_source_sha256": _guard_source_sha(),
               "run_id": run["run_id"], "receipt_sha256": checked["receipt_sha256"],
               "counts": run["tests"]["counts"], "baseline": baseline,
               "negative_controls": evaluations[1:], "export": exported,
