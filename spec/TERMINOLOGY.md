@@ -20,6 +20,15 @@
 
 **Dataset**: Collection of observations used to train or validate a derivation. Tracks source KO and lineage.
 
+**Calibrated to Conclusion**: A fitted parameter's training or test lineage reaches
+the conclusion it is meant to support, or the training and test observations share
+provenance roots. A separate holdout does not repair conclusion-derived training.
+
+**Missing Independent Validation**: A fitted parameter has no registered, traceable
+test/training split. Missing datasets, unresolved lineage references, empty lineage
+and source labels containing only whitespace do not establish independent roots.
+This blocks design-bearing warrant without asserting conclusion-derived calibration.
+
 **Warrant**: Derived analysis of whether a conclusion is structurally supported by independent evidence. Not stored — computed.
 
 **Thread of Reasoning**: Ordered investigation through viewpoints, inspired by Müller's CAFCR framework.

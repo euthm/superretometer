@@ -168,3 +168,60 @@ def test_independent_train_and_test_sources_are_a_passing_control(storage, multi
     assert "fit" in warrant.independent_kos
     assert report.reality.status == GateStatus.PASS
     assert report.design_bearing
+
+
+@pytest.mark.parametrize("side", ["training", "testing"])
+@pytest.mark.parametrize("broken_link", [
+    "missing_source_ko", "missing_parent_dataset", "blank_source",
+    "no_source_label", "empty_lineage", "cyclic_lineage",
+])
+def test_incomplete_lineage_cannot_become_independent_validation(storage, side, broken_link):
+    _, control = _case(storage, "independent", False)
+    assert control.design_bearing, "fixture must first demonstrate a passing control"
+
+    dataset = storage.get_dataset("training-base" if side == "training" else "testing")
+    if broken_link == "missing_source_ko":
+        dataset.source_ko_id = "unregistered-source"
+    elif broken_link == "missing_parent_dataset":
+        # A valid branch must not conceal a second, unresolved branch.
+        dataset.derived_from_dataset_ids = ["unregistered-parent"]
+    elif broken_link in ("blank_source", "no_source_label"):
+        storage.get_ko("lab-a" if side == "training" else "lab-b").provenance.source = (
+            " \t " if broken_link == "blank_source" else ""
+        )
+    elif broken_link == "cyclic_lineage":
+        dataset.source_ko_id = ""
+        dataset.derived_from_dataset_ids = [side]
+    else:
+        dataset.source_ko_id = ""
+        dataset.derived_from_dataset_ids = []
+
+    _assert_missing_validation(storage)
+
+
+@pytest.mark.parametrize("missing_dataset", ["no_holdout", "training", "testing"])
+def test_missing_dataset_has_the_specific_missing_validation_diagnosis(storage, missing_dataset):
+    _, control = _case(storage, "independent", False)
+    assert control.design_bearing
+    fit = storage.get_ko("fit")
+    if missing_dataset == "no_holdout":
+        fit.derivation.test_dataset_id = ""
+    elif missing_dataset == "training":
+        fit.derivation.training_dataset_id = "unregistered-training"
+    else:
+        fit.derivation.test_dataset_id = "unregistered-testing"
+
+    _assert_missing_validation(storage)
+
+
+def _assert_missing_validation(storage):
+    warrant = WarrantAnalyzer(storage).compute_warrant("claim")
+    report = SimulationGatePolicy(storage).evaluate_gates("claim")
+    _assert_other_gates_pass(report)
+    patterns = {d.pattern for d in warrant.anti_pattern_diagnoses}
+    assert AntiPattern.MISSING_INDEPENDENT_VALIDATION in patterns
+    assert AntiPattern.CALIBRATED_TO_CONCLUSION not in patterns
+    assert warrant.warrant_status == WarrantStatus.UNWARRANTED
+    assert "fit" not in warrant.independent_kos
+    assert report.reality.status == GateStatus.BLOCK
+    assert not report.design_bearing
