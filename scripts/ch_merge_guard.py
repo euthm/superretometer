@@ -25,6 +25,45 @@ POLICY_FIELDS = {"schema_version", "command", "parser", "minimum_executed",
                  "timeout_seconds", "scope"}
 
 
+def _extract_runner_paths(command):
+    """Extract explicit file paths from the command argv that live inside {repo}.
+
+    Returns relative paths (without {repo} prefix) for files referenced by
+    the command that must be present in source_paths when tracked.
+    Only direct file references are extracted; module paths (-m pytest) and
+    directory arguments are not treated as runner files.
+    """
+    result = []
+    for arg in command:
+        # {repo}/path → relative path
+        if arg.startswith("{repo}/"):
+            rel = arg[len("{repo}/"):]
+            if rel and not rel.startswith("/"):
+                result.append(rel)
+    return result
+
+
+def _enforce_minimum_set(source_paths, tracked_paths, command):
+    """Reject if tracked files referenced by the command are missing from source_paths.
+
+    The reviewed command names specific files (runner script, etc.). If those
+    files are tracked by Git, they must appear in the declared source_paths.
+    A capture that omits the actual runner code cannot represent the reviewed
+    regression. Pattern-based source discovery is insufficient for enforcement.
+    """
+    declared = set(source_paths)
+    required = set(_extract_runner_paths(command))
+    tracked_set = set(tracked_paths)
+    missing = []
+    for path in sorted(required):
+        if path in tracked_set and path not in declared:
+            missing.append(path)
+    if missing:
+        raise EvidenceError(
+            f"Declared source set omits tracked required files referenced by command: {', '.join(missing)}"
+        )
+
+
 def policy_at(path):
     policy = load(Path(path))
     if not isinstance(policy, dict) or set(policy) != POLICY_FIELDS:
@@ -105,8 +144,9 @@ def capture(policy, repo, commit, expected_remote, output):
     repo = Path(repo).resolve()
     expected_checkout(repo, commit, expected_remote)
     output = fresh_output(output, repo)
+    tracked = tracked_sources(repo)
     profile = {
-        "repo": str(repo), "source_paths": tracked_sources(repo), "lockfiles": policy["lockfiles"],
+        "repo": str(repo), "source_paths": tracked, "lockfiles": policy["lockfiles"],
         "archive": {"path": str(output / "archive"), "locator": "ci-artifact://ch-evidence",
                     "retention": "CI artifacts expire after 30 days; export to durable storage for longer audit retention"},
         "claim": {"title": "Candidate satisfies the reviewed regression policy", "scope": policy["scope"],
@@ -143,7 +183,9 @@ def validate_run(policy, repo, commit, expected_remote, receipt):
     if (code["canonical_remote"] != canonical_remote(expected_remote)
             or canonical_remote(run["claim"]["declared_remote"]) != canonical_remote(expected_remote)):
         raise EvidenceError("Receipt repository identity mismatch")
-    if code["source_paths"] != tracked_sources(repo) or code["lockfile_paths"] != sorted(policy["lockfiles"]):
+    tracked = tracked_sources(repo)
+    _enforce_minimum_set(code["source_paths"], tracked, policy["command"])
+    if code["source_paths"] != tracked or code["lockfile_paths"] != sorted(policy["lockfiles"]):
         raise EvidenceError("Receipt omits tracked sources or declared lockfiles")
     observed_argv = run["execution"]["argv"]
     literal_argv_matches = len(observed_argv) == len(policy["command"]) and all(

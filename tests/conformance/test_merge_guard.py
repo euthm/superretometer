@@ -181,3 +181,74 @@ def test_cli_missing_receipt_is_a_nonzero_rejection(fixture, capsys):
                        "--output", str(root / "verified")])
     assert code != 0
     assert json.loads(capsys.readouterr().out)["approved"] is False
+
+
+def test_bounded_missing_runner_is_rejected(fixture):
+    """A profile that declares only input.txt must be rejected when runner.py
+    is tracked and referenced by the reviewed command."""
+    repo, commit, policy, root = fixture
+    profile = {"repo": str(repo), "source_paths": ["input.txt"], "lockfiles": ["fixture.lock"],
+               "archive": {"path": str(root / "archive"), "locator": "fixture://test", "retention": "fixture only"},
+               "claim": {"title": "Fixture", "scope": policy["scope"], "declared_remote": REMOTE,
+                         "requested_commit": commit, "falsifier": "Any failed assertion"},
+               "acceptance": guard.acceptance_rules(policy), "parser": policy["parser"],
+               "environment": {"tools": {}, "services": {}, "exclusions": ["synthetic fixture"]},
+               "timeout_seconds": policy["timeout_seconds"]}
+    run = record(profile, policy["command"])
+    with pytest.raises(EvidenceError, match="omits tracked required files"):
+        guard.check(policy, repo, commit, REMOTE, run["receipt"], root / "verified")
+
+
+def test_bounded_missing_policy_file_is_rejected(fixture):
+    """When a tracked file referenced by the command is omitted from source_paths,
+    the receipt must be rejected even if all other tracked files are declared."""
+    repo, commit, policy, root = fixture
+    # Add a policy file to the repo and reference it in the command
+    (repo / "run_policy.json").write_text(json.dumps({"mode": "pass"}))
+    git_fn = lambda *a: subprocess.check_output(["git", "-C", str(repo), *a]).decode().strip()
+    git_fn("add", "run_policy.json")
+    git_fn("commit", "-qm", "Add policy file")
+    new_commit = git_fn("rev-parse", "HEAD")
+    policy["command"] = [sys.executable, "{repo}/runner.py", "{output}", "{repo}/run_policy.json"]
+    # Capture with full tracked sources (should pass)
+    result = guard.capture(policy, repo, new_commit, REMOTE, root / "capture2")
+    receipt = root / "capture2/receipt/run.json"
+    check_result = guard.check(policy, repo, new_commit, REMOTE, receipt, root / "verified2")
+    assert check_result["approved"] is True
+    # Now test: profile that omits run_policy.json from source_paths
+    tracked = guard.tracked_sources(repo)
+    partial_paths = [p for p in tracked if p != "run_policy.json"]
+    profile = {"repo": str(repo), "source_paths": partial_paths, "lockfiles": ["fixture.lock"],
+               "archive": {"path": str(root / "archive3"), "locator": "fixture://test", "retention": "fixture only"},
+               "claim": {"title": "Fixture", "scope": policy["scope"], "declared_remote": REMOTE,
+                         "requested_commit": new_commit, "falsifier": "Any failed assertion"},
+               "acceptance": guard.acceptance_rules(policy), "parser": policy["parser"],
+               "environment": {"tools": {}, "services": {}, "exclusions": ["synthetic fixture"]},
+               "timeout_seconds": policy["timeout_seconds"]}
+    run = record(profile, policy["command"])
+    with pytest.raises(EvidenceError, match="omits tracked required files"):
+        guard.check(policy, repo, new_commit, REMOTE, run["receipt"], root / "verified4")
+
+
+def test_bounded_only_input_txt_rejected(fixture):
+    """Multiple source files tracked; declaring only input.txt rejects because
+    runner.py is referenced by the command and tracked."""
+    repo, commit, policy, root = fixture
+    # Add another tracked file to make the source set larger
+    (repo / "conftest.py").write_text("# test config")
+    git = lambda *a: subprocess.check_output(["git", "-C", str(repo), *a]).decode().strip()
+    git("add", "conftest.py")
+    git("commit", "-qm", "Add conftest")
+    commit = git("rev-parse", "HEAD")
+    # Profile declares only input.txt, omits runner.py referenced by command
+    profile = {"repo": str(repo), "source_paths": ["input.txt", "conftest.py"],
+               "lockfiles": ["fixture.lock"],
+               "archive": {"path": str(root / "archive2"), "locator": "fixture://test", "retention": "fixture only"},
+               "claim": {"title": "Fixture", "scope": policy["scope"], "declared_remote": REMOTE,
+                         "requested_commit": commit, "falsifier": "Any failed assertion"},
+               "acceptance": guard.acceptance_rules(policy), "parser": policy["parser"],
+               "environment": {"tools": {}, "services": {}, "exclusions": ["synthetic fixture"]},
+               "timeout_seconds": policy["timeout_seconds"]}
+    run = record(profile, policy["command"])
+    with pytest.raises(EvidenceError, match="omits tracked required files"):
+        guard.check(policy, repo, commit, REMOTE, run["receipt"], root / "verified3")
