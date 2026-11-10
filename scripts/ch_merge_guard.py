@@ -52,37 +52,49 @@ def _guard_source_sha():
     return sha(this_file.read_bytes())
 
 
-def _extract_runner_paths(command):
-    """Extract explicit file paths from the command argv that live inside {repo}.
+def _extract_runner_paths(command, repo):
+    """Extract explicit file paths from the command argv that live inside the repo.
 
-    Returns relative paths for files referenced by the reviewed command that
-    must be present in source_paths when tracked. Only direct file references
-    are extracted; module paths (-m pytest) and directory arguments are not
-    treated as runner files.
+    Handles two forms:
+    - ``{repo}/path/to/file`` → ``path/to/file``
+    - ``path/to/file`` (relative, no {repo}/ prefix) — resolved against repo root.
+
+    Only direct file references are extracted; module paths (-m pytest) and
+    directory arguments are not treated as runner files.
     """
     result = []
+    repo_resolved = Path(repo).resolve()
     for arg in command:
+        rel = None
         if arg.startswith("{repo}/"):
             rel = arg[len("{repo}/"):]
-            if rel and not rel.startswith("/"):
-                result.append(rel)
+        elif not arg.startswith("/") and "/" not in arg.split("=", 1)[0]:
+            # Bare filename or relative path (e.g. "runner.py", "tests/run.py")
+            # Verify it exists as a file inside the repo root.
+            candidate = (repo_resolved / arg)
+            if candidate.is_file():
+                rel = arg
+        if rel and not rel.startswith("/"):
+            result.append(rel)
     return result
 
 
-def _guard_policy_path(policy_path):
-    """Return the relative policy file path if it lives inside the candidate repo.
+def _policy_relative_to_repo(policy_file_path, repo):
+    """Return the policy file path relative to repo root, or None if external.
 
-    The --policy file is loaded from outside the worktree in the CI workflow,
-    but when a policy file is tracked inside the candidate repo it must be
-    included in source_paths. Returns None when the policy file is external.
+    The --policy file is typically outside the candidate worktree in CI.
+    Only when it lives inside the repo is it subject to minimum-set enforcement.
+    Returns the exact relative path (not just basename) so that external policies
+    with the same filename as a tracked file do not trigger false rejection.
     """
     try:
-        pol = Path(policy_path).resolve()
-        # The policy path argument is absolute in CI. We check if it is a tracked
-        # file by comparing against the caller's repo root later.
-        return pol.name
-    except Exception:
-        return None
+        pol = Path(policy_file_path).resolve()
+        repo_resolved = Path(repo).resolve()
+        if pol.is_file() and str(pol).startswith(str(repo_resolved)):
+            return pol.relative_to(repo_resolved).as_posix()
+    except (ValueError, TypeError):
+        pass
+    return None
 
 
 def _tracked_file_set(repo):
@@ -120,34 +132,31 @@ def _validate_source_paths(source_paths, repo):
 def _enforce_minimum_set(source_paths, repo, command, policy_file_path=None):
     """Enforce that tracked files required for the reviewed regression are in source_paths.
 
-    Two checks, both explicit (no patterns):
+    Two checks, both explicit paths (no patterns):
 
-    1. Runner: every file referenced by the reviewed command as {repo}/path must
-       appear in source_paths when tracked in the repository. This covers the
-       actual test runner script and any data/config files the command reads.
+    1. Runner: every file referenced by the reviewed command ({repo}/path or
+       relative path) must appear in source_paths when tracked in the repository.
 
-    2. Policy: if the --policy file lives inside the candidate worktree
-       (same basename is a tracked file), it must be in source_paths.
-       The policy file is reviewed separately from the command argv, so this
-       check is independent of _extract_runner_paths.
+    2. Policy: if the --policy file resolves to a path inside the candidate
+       worktree, that exact relative path must be in source_paths. External
+       policy files (the CI default) do not trigger this check — matching by
+       basename alone would reject valid captures where the external policy
+       happens to share a filename with a tracked file.
     """
     declared = set(source_paths)
     tracked = _tracked_file_set(repo)
     missing = []
 
     # 1. Command-referenced files (runner, data files, etc.)
-    for path in sorted(_extract_runner_paths(command)):
+    for path in sorted(_extract_runner_paths(command, repo)):
         if path in tracked and path not in declared:
             missing.append(path)
 
-    # 2. Policy file — checked by name when it exists inside the worktree
+    # 2. Policy file — only when it actually lives inside the repo
     if policy_file_path is not None:
-        # Find the actual tracked file by matching basename
-        pol_basename = Path(policy_file_path).name
-        for f in sorted(tracked):
-            if Path(f).name == pol_basename and f not in declared:
-                missing.append(f)
-                break
+        pol_rel = _policy_relative_to_repo(policy_file_path, repo)
+        if pol_rel is not None and pol_rel in tracked and pol_rel not in declared:
+            missing.append(pol_rel)
 
     if missing:
         raise EvidenceError(
