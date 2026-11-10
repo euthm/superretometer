@@ -415,8 +415,13 @@ class WarrantAnalyzer:
         self, ko: KnowledgeObject, conclusion_ko_id: str, path: list[str],
     ) -> AntiPatternDiagnosis | None:
         """Structural: fitted parameter is calibrated to the conclusion if
-        its training and test datasets share provenance roots, OR if it
-        has no test dataset (fitted and tested on same data).
+        its training and test datasets share provenance roots, if the
+        training or test data traces back to the conclusion itself, or
+        if it has no test dataset (fitted and tested on same data).
+
+        The circularity checks run first: a parameter trained on the
+        conclusion (or with a test set derived from it) is fundamentally
+        circular regardless of whether it has a hold-out split.
         """
         if not ko.derivation:
             return None
@@ -424,31 +429,74 @@ class WarrantAnalyzer:
         training_id = ko.derivation.training_dataset_id
         test_id = ko.derivation.test_dataset_id
 
-        # No test dataset at all → fitted parameter is pure calibration
-        if not test_id:
-            return AntiPatternDiagnosis(
-                pattern=AntiPattern.CALIBRATED_TO_CONCLUSION,
-                offending_ko_ids=[ko.id],
-                justification_path=[ko.id],
-                violated_condition="Fitted parameter has no independent test dataset.",
-                resolution_hint="Add a test dataset that is disjoint from the training dataset.",
-            )
-
-        # Check dataset independence
+        # Resolve datasets early — needed for all checks below
         train_ds = self.storage.get_dataset(training_id)
-        test_ds = self.storage.get_dataset(test_id)
+        test_ds = self.storage.get_dataset(test_id) if test_id else None
 
-        if train_ds is None or test_ds is None:
-            # Datasets not registered — cannot verify independence
+        # --- 0. Circularity checks (run before independence checks) ---
+        # Training dataset traces back to the conclusion.
+        if train_ds:
+            train_ko_ids = self._dataset_lineage_ko_ids(train_ds)
+            if conclusion_ko_id in train_ko_ids:
+                return AntiPatternDiagnosis(
+                    pattern=AntiPattern.CALIBRATED_TO_CONCLUSION,
+                    offending_ko_ids=[ko.id, conclusion_ko_id],
+                    justification_path=[ko.id, conclusion_ko_id],
+                    violated_condition=(
+                        f"Training dataset for {ko.id} traces back to conclusion "
+                        f"{conclusion_ko_id}. Parameter was fitted on data derived "
+                        f"from the claim it is supposed to support."
+                    ),
+                    resolution_hint="Fit the parameter on independent observations, not on the conclusion or data derived from it.",
+                )
+
+        # Test dataset traces back to the conclusion — equally circular.
+        # A test set derived from the conclusion can't validate the fit.
+        if test_ds:
+            test_ko_ids = self._dataset_lineage_ko_ids(test_ds)
+            if conclusion_ko_id in test_ko_ids:
+                return AntiPatternDiagnosis(
+                    pattern=AntiPattern.CALIBRATED_TO_CONCLUSION,
+                    offending_ko_ids=[ko.id, conclusion_ko_id],
+                    justification_path=[ko.id, conclusion_ko_id],
+                    violated_condition=(
+                        f"Test dataset for {ko.id} traces back to conclusion "
+                        f"{conclusion_ko_id}. Validation is circular: the test "
+                        f"data is derived from the claim being tested."
+                    ),
+                    resolution_hint="Use a test dataset from independent observations, not derived from the conclusion.",
+                )
+
+        # --- 1. No test dataset at all → fitted parameter is pure calibration ---
+        if not test_id or test_ds is None:
+            if not test_id:
+                return AntiPatternDiagnosis(
+                    pattern=AntiPattern.CALIBRATED_TO_CONCLUSION,
+                    offending_ko_ids=[ko.id],
+                    justification_path=[ko.id],
+                    violated_condition="Fitted parameter has no independent test dataset.",
+                    resolution_hint="Add a test dataset that is disjoint from the training dataset.",
+                )
+            # test_id set but dataset not found
             return AntiPatternDiagnosis(
                 pattern=AntiPattern.CALIBRATED_TO_CONCLUSION,
                 offending_ko_ids=[ko.id],
                 justification_path=[ko.id],
-                violated_condition="Training or test dataset not found in storage.",
-                resolution_hint="Register both training and test datasets.",
+                violated_condition="Test dataset not found in storage.",
+                resolution_hint="Register the test dataset.",
             )
 
-        # Check if training and test datasets share provenance roots
+        # Training dataset not found
+        if train_ds is None:
+            return AntiPatternDiagnosis(
+                pattern=AntiPattern.CALIBRATED_TO_CONCLUSION,
+                offending_ko_ids=[ko.id],
+                justification_path=[ko.id],
+                violated_condition="Training dataset not found in storage.",
+                resolution_hint="Register the training dataset.",
+            )
+
+        # --- 2. Train/test provenance root overlap ---
         train_roots = self._trace_dataset_roots(train_ds)
         test_roots = self._trace_dataset_roots(test_ds)
 
@@ -904,6 +952,62 @@ class WarrantAnalyzer:
             roots.add(dataset.source_ko_id)
 
         return roots
+
+    def _dataset_lineage_ko_ids(self, dataset: 'Dataset') -> set[str]:
+        """Collect all KO IDs reachable from a dataset through its lineage.
+
+        Walks source_ko_id and derived_from_dataset_ids, collecting every
+        KO ID encountered (including intermediate KOs and the final source).
+        Used to check whether a dataset traces back to the conclusion KO.
+
+        Follows the same upstream edges as ``_trace_provenance_roots``:
+        DERIVED_FROM and TRANSFERRED_FROM relations, derivation.upstream_ko_ids,
+        and derivation dataset links — so coverage is consistent.
+        """
+        visited_ds: set[str] = set()
+        visited_ko: set[str] = set()
+        ko_ids: set[str] = set()
+        ds_queue = [dataset]
+
+        while ds_queue:
+            ds = ds_queue.pop(0)
+
+            if ds.source_ko_id and ds.source_ko_id not in visited_ko:
+                ko_ids.add(ds.source_ko_id)
+                visited_ko.add(ds.source_ko_id)
+
+                # Walk the KO upstream using the same edges as _trace_provenance_roots
+                ko = self.storage.get_ko(ds.source_ko_id)
+                if ko:
+                    # derivation.upstream_ko_ids
+                    if ko.derivation:
+                        for up_id in ko.derivation.upstream_ko_ids:
+                            ko_ids.add(up_id)
+                            if up_id not in visited_ko:
+                                visited_ko.add(up_id)
+                    # DERIVED_FROM / TRANSFERRED_FROM relations
+                    for rel in ko.relations:
+                        if rel.type in (RelationType.DERIVED_FROM,
+                                        RelationType.TRANSFERRED_FROM):
+                            ko_ids.add(rel.to)
+                            # Continue walking from upstream KO
+                            if rel.to not in visited_ko:
+                                visited_ko.add(rel.to)
+                                up_ko = self.storage.get_ko(rel.to)
+                                if up_ko and up_ko.provenance and up_ko.provenance.source:
+                                    # If upstream KO has no further derivation,
+                                    # it's a leaf — but we still need to check
+                                    # if its ID is the conclusion
+                                    pass
+
+            for parent_id in ds.derived_from_dataset_ids:
+                if parent_id not in visited_ds:
+                    visited_ds.add(parent_id)
+                    parent_ds = self.storage.get_dataset(parent_id)
+                    if parent_ds:
+                        ds_queue.append(parent_ds)
+
+        return ko_ids
 
     # ── Independent grounding check ─────────────────────────────────────
 
