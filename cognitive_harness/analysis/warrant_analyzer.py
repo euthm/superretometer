@@ -24,6 +24,16 @@ from cognitive_harness.exceptions import IncompleteEnumerationError
 log = logging.getLogger(__name__)
 
 
+def _normalise_provenance_source(source: str) -> str:
+    """Canonicalise a provenance source string for comparison.
+
+    Lowercases, strips surrounding whitespace, and collapses internal
+    whitespace runs to a single space. Two transcriptions of the same
+    document that differ only in casing or spacing will match.
+    """
+    return " ".join(source.lower().split())
+
+
 @dataclass
 class IndependenceResult:
     """Result of independence analysis for a set of evidence KOs."""
@@ -132,7 +142,10 @@ class WarrantAnalyzer:
                     TruthCategory.PHYSICAL_OBSERVATION,
                     TruthCategory.SOURCED_MATERIAL_DATA,
                 ):
-                    if not conc.evidence_ids:
+                    if not conc.evidence_ids or not any(
+                        self.storage.get_evidence(ev_id) is not None
+                        for ev_id in conc.evidence_ids
+                    ):
                         self_grounding_ok = False
                 if not self_grounding_ok:
                     dependent.append(conclusion_ko_id)
@@ -943,7 +956,7 @@ class WarrantAnalyzer:
                 # Leaf KO: collect provenance root
                 if not has_upstream:
                     if ko.provenance and ko.provenance.source:
-                        roots.add(ko.provenance.source)
+                        roots.add(_normalise_provenance_source(ko.provenance.source))
                     else:
                         roots.add(ko_id)
 
@@ -1028,9 +1041,14 @@ class WarrantAnalyzer:
         if ko.derivation and ko.derivation.derivation_type == DerivationType.TRANSFERRED:
             return bool(ko.derivation.domain_mapping_ko_id)
 
-        # Physical observations: must have evidence
+        # Physical observations: must have evidence that actually exists
         if ko.truth_category == TruthCategory.PHYSICAL_OBSERVATION:
-            return bool(ko.evidence_ids)
+            if not ko.evidence_ids:
+                return False
+            return any(
+                self.storage.get_evidence(ev_id) is not None
+                for ev_id in ko.evidence_ids
+            )
 
         # Sourced material data: must have non-system source
         if ko.truth_category == TruthCategory.SOURCED_MATERIAL_DATA:
