@@ -52,29 +52,53 @@ def _guard_source_sha():
     return sha(this_file.read_bytes())
 
 
+def _policy_sha(policy):
+    """Hash the reviewed policy JSON for identity binding."""
+    return sha(canonical(policy))
+
+
+def _normalize_repo_path(arg, repo):
+    """Resolve a command argument to a repo-relative path, or return None.
+
+    Handles:
+    - ``{repo}/path/to/file`` → ``path/to/file``
+    - ``./path/to/file`` → ``path/to/file``
+    - ``path/to/file`` (relative, e.g. ``tests/runner.py``)
+    - bare ``file.py``
+
+    Only file arguments are returned; absolute paths, env vars (``FOO=bar``),
+    module flags (``-m pytest``), and shell operators are ignored.
+    The result is verified to exist as a file inside the repo root.
+    """
+    if arg.startswith("{repo}/"):
+        return arg[len("{repo}/"):]
+    # Skip absolute paths, env assignments, flags, shell operators
+    if arg.startswith("/") or "=" in arg or arg.startswith("-") or arg in ("|", "&&", "||"):
+        return None
+    # Strip leading ./ for normalisation
+    rel = arg
+    while rel.startswith("./"):
+        rel = rel[2:]
+    if not rel:
+        return None
+    repo_resolved = Path(repo).resolve()
+    candidate = (repo_resolved / rel)
+    if candidate.is_file():
+        return rel
+    return None
+
+
 def _extract_runner_paths(command, repo):
     """Extract explicit file paths from the command argv that live inside the repo.
 
-    Handles two forms:
-    - ``{repo}/path/to/file`` → ``path/to/file``
-    - ``path/to/file`` (relative, no {repo}/ prefix) — resolved against repo root.
-
-    Only direct file references are extracted; module paths (-m pytest) and
-    directory arguments are not treated as runner files.
+    Returns normalised relative paths for files referenced by the reviewed
+    command. Only direct file references are extracted; module paths (-m pytest)
+    and directory arguments are not treated as runner files.
     """
     result = []
-    repo_resolved = Path(repo).resolve()
     for arg in command:
-        rel = None
-        if arg.startswith("{repo}/"):
-            rel = arg[len("{repo}/"):]
-        elif not arg.startswith("/") and "/" not in arg.split("=", 1)[0]:
-            # Bare filename or relative path (e.g. "runner.py", "tests/run.py")
-            # Verify it exists as a file inside the repo root.
-            candidate = (repo_resolved / arg)
-            if candidate.is_file():
-                rel = arg
-        if rel and not rel.startswith("/"):
+        rel = _normalize_repo_path(arg, repo)
+        if rel:
             result.append(rel)
     return result
 
@@ -269,15 +293,26 @@ def fresh_output(output, repo):
     return output
 
 
+def _tool_command_outputting(value):
+    """Return a tool command that outputs a fixed string when executed by record()."""
+    return [sys.executable, "-c", f"import sys; sys.stdout.write({value!r})"]
+
+
 def _guard_tool_command():
     """Return a valid tool command that outputs the guard source hash.
-    
+
     This is recorded in environment.tools and executed by record().
     The output (the hash string) is stored in the receipt at
     environment.tools["ch_merge_guard"].
     """
     guard_sha = _guard_source_sha()
-    return [sys.executable, "-c", f"import sys; sys.stdout.write({guard_sha!r})"]
+    return _tool_command_outputting(guard_sha)
+
+
+def _policy_tool_command(policy):
+    """Return a tool command that outputs the reviewed policy SHA."""
+    pol_sha = _policy_sha(policy)
+    return _tool_command_outputting(pol_sha)
 
 
 def capture(policy, repo, commit, expected_remote, output, policy_file_path=None):
@@ -297,6 +332,7 @@ def capture(policy, repo, commit, expected_remote, output, policy_file_path=None
             "tools": {
                 "python": [sys.executable, "--version"],
                 "ch_merge_guard": _guard_tool_command(),
+                "ch_merge_policy": _policy_tool_command(policy),
             },
             "services": {},
             "exclusions": [
@@ -357,6 +393,22 @@ def validate_run(policy, repo, commit, expected_remote, receipt, policy_file_pat
             f"but check is executing guard SHA {current_guard_sha}. "
             f"Use the same reviewed guard version for capture and check."
         )
+    # Verify policy identity: the policy that authorized capture must match the policy checking.
+    # This is independent of guard identity — unchanged guard + changed policy is rejected.
+    tools = run.get("environment", {}).get("tools", {})
+    receipt_policy_sha = tools.get("ch_merge_policy")
+    if receipt_policy_sha is None:
+        raise EvidenceError(
+            "Receipt missing policy identity observation (environment.tools.ch_merge_policy). "
+            "This receipt was captured by an older guard version without policy binding."
+        )
+    current_policy_sha = _policy_sha(policy)
+    if receipt_policy_sha != current_policy_sha:
+        raise EvidenceError(
+            f"Policy identity mismatch: receipt captured with policy SHA {receipt_policy_sha}, "
+            f"but check is using policy SHA {current_policy_sha}. "
+            f"The reviewed policy has been changed between capture and check."
+        )
     observed_argv = run["execution"]["argv"]
     literal_argv_matches = len(observed_argv) == len(policy["command"]) and all(
         re.fullmatch(re.escape(template).replace(r"\{repo\}", ".+").replace(r"\{output\}", ".+"), actual)
@@ -405,14 +457,18 @@ def check(policy, repo, commit, expected_remote, receipt, output, policy_file_pa
     offline = verify(output / "bundle", repo=repo)
     if offline["integrity"] != "verified" or offline["source_current"] != "verified":
         raise EvidenceError("Final bundle verification failed")
-    # Extract guard identity from receipt for the result
-    root = Path(receipt).parent
-    receipt_guard_sha = _receipt_guard_sha(root, run)
+    # Extract identities from receipt for the result
+    receipt_root = Path(receipt).parent
+    receipt_guard_sha = _receipt_guard_sha(receipt_root, run)
+    tools = run.get("environment", {}).get("tools", {})
+    receipt_policy_sha = tools.get("ch_merge_policy", "")
     current_guard_sha = _guard_source_sha()
+    current_policy_sha = _policy_sha(policy)
     result = {
         "schema_version": "ch-merge-result/v1", "approved": True, "commit": commit,
         "repository": canonical_remote(expected_remote),
-        "policy_sha256": sha(canonical(policy)),
+        "policy_sha256": current_policy_sha,
+        "receipt_policy_sha256": receipt_policy_sha,
         "guard_source_sha256": current_guard_sha,
         "receipt_guard_sha256": receipt_guard_sha,
         "run_id": run["run_id"], "receipt_sha256": checked["receipt_sha256"],
