@@ -35,8 +35,12 @@ import xml.etree.ElementTree as ET
 
 from cognitive_harness.analysis.implementation_gate_policy import canonical_remote
 from cognitive_harness.evidence import Target, evaluate, export_bundle, import_receipt, record, verify
+from cognitive_harness.evidence import guard_runtime
 from cognitive_harness.evidence.capture import git, remote
 from cognitive_harness.evidence.contracts import EvidenceError, canonical, load, receipt_at, safe_file, sha, write
+from cognitive_harness.evidence.guard_runtime import (
+    Progress, enforce_receipt, enforce_sources, limits_for, supervise,
+)
 
 GATES = ("provenance", "scope", "worktree", "test", "falsifiability", "dependency", "freshness")
 POLICY_FIELDS = {"schema_version", "command", "parser", "minimum_executed",
@@ -44,6 +48,12 @@ POLICY_FIELDS = {"schema_version", "command", "parser", "minimum_executed",
                  "timeout_seconds", "scope"}
 # Bounded-coverage fields — all three required together.
 BOUNDED_FIELDS = {"coverage_mode", "source_paths", "coverage_rationale"}
+_PROGRESS = None
+
+
+def progress(phase, **details):
+    if _PROGRESS is not None:
+        _PROGRESS.emit(phase, **details)
 
 
 def _guard_source_sha():
@@ -55,6 +65,11 @@ def _guard_source_sha():
 def _policy_sha(policy):
     """Hash the reviewed policy JSON for identity binding."""
     return sha(canonical(policy))
+
+
+def _runtime_source_sha():
+    """Bind operational limits/supervision code as well as the adapter script."""
+    return sha(Path(guard_runtime.__file__).read_bytes())
 
 
 def _normalize_repo_path(arg, repo):
@@ -196,7 +211,8 @@ def policy_at(path):
     if not isinstance(policy, dict):
         raise EvidenceError("Merge policy must be a YAML/JSON mapping")
     # Allow exactly POLICY_FIELDS (full mode) or POLICY_FIELDS + BOUNDED_FIELDS (bounded mode)
-    if set(policy) != POLICY_FIELDS and set(policy) != POLICY_FIELDS | BOUNDED_FIELDS:
+    fields = set(policy) - {"resource_limits"}
+    if fields != POLICY_FIELDS and fields != POLICY_FIELDS | BOUNDED_FIELDS:
         raise EvidenceError("Merge policy has missing or unknown fields")
     if policy["schema_version"] != "ch-merge-policy/v1":
         raise EvidenceError("Unsupported merge policy version")
@@ -224,7 +240,7 @@ def policy_at(path):
         relative(name)
 
     # Bounded-mode validation
-    if set(policy) == POLICY_FIELDS | BOUNDED_FIELDS:
+    if fields == POLICY_FIELDS | BOUNDED_FIELDS:
         if policy["coverage_mode"] != "bounded":
             raise EvidenceError("coverage_mode must be 'bounded'")
         if not isinstance(policy["coverage_rationale"], str) or not policy["coverage_rationale"].strip():
@@ -233,6 +249,7 @@ def policy_at(path):
         if not isinstance(policy["source_paths"], list) or len(policy["source_paths"]) == 0:
             raise EvidenceError("source_paths must be a non-empty list")
 
+    limits_for(policy)
     return policy
 
 
@@ -287,12 +304,63 @@ def acceptance_rules(policy):
             "required_test_ids": policy["required_test_ids"]}
 
 
-def fresh_output(output, repo):
+def output_path(output, repo):
     output = Path(output).resolve()
     if output == repo or repo in output.parents:
         raise EvidenceError("Merge guard output must be outside the tested worktree")
+    if output.exists() or output.is_symlink():
+        raise EvidenceError("Merge guard output already exists; choose a new output path. "
+                            "Existing evidence was not removed.")
+    return output
+
+
+def fresh_output(output, repo):
+    output = output_path(output, repo)
     output.mkdir(parents=True, exist_ok=False)
     return output
+
+
+def preflight(policy, repo, commit, expected_remote, output, *,
+              receipt=None, policy_file_path=None):
+    """Check operational budgets before runner execution or large receipt parsing.
+
+    A plan is never an acceptance result. Full coverage remains the default;
+    exceeding a budget rejects rather than silently switching to bounded mode.
+    """
+    repo = Path(repo).resolve()
+    output_path(output, repo)  # fail before expensive verification of old runs
+    expected_checkout(repo, commit, expected_remote)
+    limits = limits_for(policy)
+    receipt_size = None
+    receipt_file = None
+    if receipt is not None:
+        path = Path(receipt)
+        if path.is_dir():
+            receipt_file = safe_file(path, "run.json")
+        elif path.name == "run.json":
+            receipt_file = safe_file(path.parent, "run.json")
+        else:
+            raise EvidenceError("Expected a receipt directory or run.json")
+        receipt_size = receipt_file.stat().st_size
+        progress("receipt_size", receipt_bytes=receipt_size, resource_limits=limits)
+        enforce_receipt(receipt_size, limits)
+    sources = effective_source_paths(policy, repo, policy_file_path)
+    plan = {"approved": False, "status": "preflight", "repository": canonical_remote(expected_remote),
+            "commit": commit, "coverage_mode": policy.get("coverage_mode", "full"),
+            "source_files": len(sources), "receipt_bytes": receipt_size,
+            "resource_limits": limits}
+    progress("preflight", **plan)
+    enforce_sources(len(sources), limits)
+    if receipt_file is not None:
+        # Size was bounded before this read. Semantic/schema verification follows
+        # in validate_run; this preflight only checks the declared workload size.
+        run = load(receipt_file)
+        names = run.get("code", {}).get("source_paths") if isinstance(run, dict) else None
+        if not isinstance(names, list):
+            raise EvidenceError("Receipt source_paths must be a list")
+        plan["receipt_source_files"] = len(names)
+        enforce_sources(len(names), limits)
+    return plan
 
 
 def _tool_command_outputting(value):
@@ -319,7 +387,7 @@ def _policy_tool_command(policy):
 
 def capture(policy, repo, commit, expected_remote, output, policy_file_path=None):
     repo = Path(repo).resolve()
-    expected_checkout(repo, commit, expected_remote)
+    preflight(policy, repo, commit, expected_remote, output, policy_file_path=policy_file_path)
     output = fresh_output(output, repo)
     source_paths = effective_source_paths(policy, repo, policy_file_path)
     profile = {
@@ -335,6 +403,7 @@ def capture(policy, repo, commit, expected_remote, output, policy_file_path=None
                 "python": [sys.executable, "--version"],
                 "ch_merge_guard": _guard_tool_command(),
                 "ch_merge_policy": _policy_tool_command(policy),
+                "ch_merge_runtime": _tool_command_outputting(_runtime_source_sha()),
             },
             "services": {},
             "exclusions": [
@@ -344,11 +413,14 @@ def capture(policy, repo, commit, expected_remote, output, policy_file_path=None
         },
         "timeout_seconds": policy["timeout_seconds"],
     }
+    progress("record", event_detail="start")
     result = record(profile, policy["command"])
+    enforce_receipt(Path(result["receipt"]).stat().st_size, limits_for(policy))
     shutil.copytree(Path(result["receipt"]).parent, output / "receipt")
     # Keep the transfer small: only the finalized receipt, results and logs.
     shutil.rmtree(output / "archive")
     result["receipt"] = str(output / "receipt/run.json")
+    progress("record", event_detail="complete", acceptance=result["acceptance"]["status"])
     return result
 
 
@@ -398,6 +470,9 @@ def validate_run(policy, repo, commit, expected_remote, receipt, policy_file_pat
     # Verify policy identity: the policy that authorized capture must match the policy checking.
     # This is independent of guard identity — unchanged guard + changed policy is rejected.
     tools = run.get("environment", {}).get("tools", {})
+    if tools.get("ch_merge_runtime") != _runtime_source_sha():
+        raise EvidenceError("Guard runtime identity mismatch; use the same reviewed "
+                            "resource/supervision implementation for capture and check")
     receipt_policy_sha = tools.get("ch_merge_policy")
     if receipt_policy_sha is None:
         raise EvidenceError(
@@ -440,12 +515,18 @@ def validate_run(policy, repo, commit, expected_remote, receipt, policy_file_pat
 
 def check(policy, repo, commit, expected_remote, receipt, output, policy_file_path=None):
     repo = Path(repo).resolve()
+    preflight(policy, repo, commit, expected_remote, output,
+              receipt=receipt, policy_file_path=policy_file_path)
+    progress("verify_receipt", event_detail="start")
     checked, run = validate_run(policy, repo, commit, expected_remote, receipt, policy_file_path)
     output = fresh_output(output, repo)
     target = Target("ci-merge-guard", output / "target", {expected_remote: repo})
+    progress("import", event_detail="start")
     import_receipt(receipt, target)
-    evaluations = [evaluate(target, run["run_id"], control=c)
-                   for c in ("baseline", "commit_mismatch", "missing_validator")]
+    evaluations = []
+    for control in ("baseline", "commit_mismatch", "missing_validator"):
+        progress("evaluate", control=control, event_detail="start")
+        evaluations.append(evaluate(target, run["run_id"], control=control))
     baseline, mismatch, missing = evaluations
     if not baseline["approved"] or not all(baseline["gates"][g]["status"] == "pass" for g in GATES):
         raise EvidenceError("Baseline did not pass all seven implementation gates")
@@ -455,7 +536,9 @@ def check(policy, repo, commit, expected_remote, receipt, output, policy_file_pa
         raise EvidenceError("Commit-mismatch control is not isolated")
     if missing["approved"] or missing["gates"]["test"]["status"] != "unknown":
         raise EvidenceError("Missing-validator negative control failed")
+    progress("export", event_detail="start")
     exported = export_bundle(target, [e["evaluation_id"] for e in evaluations], output / "bundle")
+    progress("verify_bundle", event_detail="start")
     offline = verify(output / "bundle", repo=repo)
     if offline["integrity"] != "verified" or offline["source_current"] != "verified":
         raise EvidenceError("Final bundle verification failed")
@@ -473,16 +556,19 @@ def check(policy, repo, commit, expected_remote, receipt, output, policy_file_pa
         "receipt_policy_sha256": receipt_policy_sha,
         "guard_source_sha256": current_guard_sha,
         "receipt_guard_sha256": receipt_guard_sha,
+        "runtime_source_sha256": _runtime_source_sha(),
+        "receipt_runtime_sha256": tools.get("ch_merge_runtime"),
         "run_id": run["run_id"], "receipt_sha256": checked["receipt_sha256"],
         "counts": run["tests"]["counts"], "baseline": baseline,
         "negative_controls": evaluations[1:], "export": exported,
         "trust": "Scoped CI acceptance; runner-reported, not independent certification or deployment approval"
     }
     write(output / "merge-result.json", result)
+    progress("complete", approved=True)
     return result
 
 
-def main(argv=None):
+def parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("operation", choices=("capture", "check"))
     parser.add_argument("--policy", required=True)
@@ -491,13 +577,28 @@ def main(argv=None):
     parser.add_argument("--expected-remote", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--receipt")
-    args = parser.parse_args(argv)
+    parser.add_argument("--preflight", action="store_true",
+                        help="Report scope and resource budgets without running tests or approving evidence")
+    return parser
+
+
+def _worker_main(argv):
+    global _PROGRESS
+    _PROGRESS = Progress()
+    args = parser().parse_args(argv)
     try:
         policy = policy_at(args.policy)
         common = (policy, args.repo, args.expected_commit, args.expected_remote)
         # Pass the --policy file path for in-worktree policy enforcement
         pol_path = str(Path(args.policy).resolve())
-        if args.operation == "capture":
+        if args.operation == "check" and not args.receipt:
+            raise EvidenceError("check requires an explicitly selected receipt")
+        if args.preflight:
+            result = preflight(*common, args.output,
+                               receipt=args.receipt if args.operation == "check" else None,
+                               policy_file_path=pol_path)
+            code = 0
+        elif args.operation == "capture":
             result = capture(*common, args.output, policy_file_path=pol_path)
             code = 0 if result["acceptance"]["status"] == "pass" else 4
         else:
@@ -508,6 +609,30 @@ def main(argv=None):
         print(json.dumps(result, sort_keys=True))
         return code
     except (EvidenceError, OSError, KeyError, TypeError, ValueError) as exc:
+        print(json.dumps({"approved": False, "status": "rejected", "reason": str(exc)}))
+        return 2
+
+
+def main(argv=None):
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    args = parser().parse_args(arguments)
+    reporter = Progress()
+    try:
+        policy = policy_at(args.policy)
+        limits = limits_for(policy)
+        reporter.emit("supervise", operation=args.operation, resource_limits=limits)
+        # The reviewed script is loaded in an isolated process group. No receipt
+        # argv is executed by check, and no worker stdout is published early.
+        bootstrap = ("import runpy,sys; scope=runpy.run_path(sys.argv[1]); "
+                     "raise SystemExit(scope['_worker_main'](sys.argv[2:]))")
+        command = [sys.executable, "-c", bootstrap, str(Path(__file__).resolve()), *arguments]
+        output, code = supervise(command, limits["operation_timeout_seconds"], progress=reporter)
+        result = json.loads(output)
+        if code != 0 and result.get("approved") is True:
+            raise EvidenceError("Failed worker cannot publish approval")
+        print(json.dumps(result, sort_keys=True))
+        return code
+    except (EvidenceError, OSError, ValueError, TypeError) as exc:
         print(json.dumps({"approved": False, "status": "rejected", "reason": str(exc)}))
         return 2
 
