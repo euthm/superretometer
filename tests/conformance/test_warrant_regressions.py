@@ -117,6 +117,11 @@ def _two_premises(storage, roots_a, roots_b):
     for rid in set(roots_a) | set(roots_b):
         storage.create_ko(mk(rid, rid, TruthCategory.PHYSICAL_OBSERVATION,
                              evidence_ids=[f"ev-{rid}"]))
+        storage.add_evidence(
+            evidence_id=f"ev-{rid}", claim_id=rid, status="pass",
+            observation=f"measurement {rid}", records=[{"value": 1.0}],
+            source_ko_id=rid,
+        )
     for name, roots in (("a", roots_a), ("b", roots_b)):
         storage.create_ko(mk(name, name, TruthCategory.MODEL_DERIVED,
                              derivation=DerivationRelation(
@@ -134,7 +139,7 @@ def test_partial_root_overlap_weakens_warrant(storage):
     result = _two_premises(storage, ["R1", "R2"], ["R1", "R3"])
 
     assert result.warrant_status == WarrantStatus.CONDITIONALLY_WARRANTED
-    assert any("R1" in c for c in result.conditional_assumptions)
+    assert any("r1" in c.lower() for c in result.conditional_assumptions)
 
 
 def test_extra_upstream_node_cannot_clear_a_shared_root(storage):
@@ -147,7 +152,7 @@ def test_extra_upstream_node_cannot_clear_a_shared_root(storage):
     storage2 = InMemoryStorage()
     result = _two_premises(storage2, ["R1"], ["R1", "R9"])
     assert result.warrant_status == WarrantStatus.CONDITIONALLY_WARRANTED
-    assert any("R1" in c for c in result.conditional_assumptions)
+    assert any("r1" in c.lower() for c in result.conditional_assumptions)
 
 
 def test_validated_grounding_requires_disjoint_roots(storage):
@@ -156,6 +161,8 @@ def test_validated_grounding_requires_disjoint_roots(storage):
     while the FITTED branch already required disjointness."""
     storage.create_ko(mk("R", "R", TruthCategory.PHYSICAL_OBSERVATION, evidence_ids=["e"]))
     storage.create_ko(mk("S", "S", TruthCategory.PHYSICAL_OBSERVATION, evidence_ids=["e"]))
+    storage.add_evidence(evidence_id="e", claim_id="R", status="pass",
+                         observation="measurement R", records=[{"value": 1.0}], source_ko_id="R")
     storage.create_ko(mk("q1", "q1", TruthCategory.MODEL_DERIVED,
                          derivation=DerivationRelation(
                              derivation_type=DerivationType.MODELED, upstream_ko_ids=["R"])))

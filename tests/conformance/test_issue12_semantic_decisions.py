@@ -34,8 +34,8 @@ class TestProvenanceSourceIndependence:
 
         analyzer = WarrantAnalyzer(storage)
         result = analyzer.compute_warrant("c")
-        assert "ASME-BPVC-2023-VIII" in result.independence.root_sets.get("a", set())
-        assert "ASME-BPVC-2023-VIII" in result.independence.root_sets.get("b", set())
+        assert "asme-bpvc-2023-viii" in result.independence.root_sets.get("a", set())
+        assert "asme-bpvc-2023-viii" in result.independence.root_sets.get("b", set())
         assert result.independence.independent_root_count == 1
         assert result.warrant_status == WarrantStatus.CONDITIONALLY_WARRANTED
 
