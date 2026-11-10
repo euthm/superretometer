@@ -103,8 +103,7 @@ def test_unwarranted_is_always_explainable(storage):
 
     assert result.warrant_status == WarrantStatus.UNWARRANTED
     assert result.anti_pattern_diagnoses, "untraceable dataset lineage must be diagnosed"
-    assert any(d.pattern.value in ("calibrated_to_conclusion",
-                                   "missing_independent_validation")
+    assert any(d.pattern.value == "missing_independent_validation"
                for d in result.anti_pattern_diagnoses)
 
     gate = SimulationGatePolicy(storage)._gate_reality("claim")

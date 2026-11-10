@@ -10,7 +10,7 @@ Warrant is derived state, not authoritative stored truth. A conclusion's warrant
 |---|---|
 | `WARRANTED` | All supporting premises are independently grounded. No structural defects. |
 | `CONDITIONALLY_WARRANTED` | Warrant holds if certain assumptions are accepted. Premises share provenance roots or depend on unresolved assumptions. |
-| `UNWARRANTED` | Structural defects found: circular dependency, calibrated-to-conclusion, tautological validation, physically unrealizable, unsupported transfer. |
+| `UNWARRANTED` | Structural defects found: circular dependency, calibrated-to-conclusion, missing independent validation, tautological validation, physically unrealizable, unsupported transfer. |
 | `UNRESOLVED` | Conclusion cannot be found, or graph structure is insufficient to determine warrant. |
 
 ## What Determines Warrant
@@ -35,13 +35,45 @@ Warrant is NOT determined by:
 
 | Pattern | Structural Condition |
 |---|---|
-| `CALIBRATED_TO_CONCLUSION` | FITTED derivation with self-referential training dataset and no independent test set |
+| `CALIBRATED_TO_CONCLUSION` | FITTED derivation whose training or test dataset traces to the conclusion, or whose training and test datasets share provenance roots |
+| `MISSING_INDEPENDENT_VALIDATION` | FITTED derivation without a test dataset, with an unregistered training/test dataset, or with incomplete or untraceable dataset lineage |
 | `TAUTOLOGICAL_VALIDATION` | VALIDATED derivation where all upstream KOs share a single provenance root |
 | `INERT_PARAMETER` | Parameter in KO content but not in causal/state equations (requires causal graph) |
 | `PHYSICALLY_UNREALIZABLE` | KO contradicts a CONSERVATION_LAW-type constraint |
 | `CONTRADICTED` | An explicit incoming CONTRADICTS edge from a KO other than a CONSERVATION_LAW constraint |
 | `UNSUPPORTED_TRANSFER` | TRANSFERRED derivation with empty `domain_mapping_ko_id` |
 | `CIRCULAR_DEPENDENCY` | Cycle detected in justification graph traversal |
+
+### Fitted parameters and dataset lineage
+
+A fitted parameter MUST NOT independently ground a conclusion unless its training
+and test datasets are registered and have nonempty, disjoint provenance roots.
+Lineage traversal follows dataset sources and parent datasets, structured upstream
+KO derivations, and DERIVED_FROM/TRANSFERRED_FROM graph edges. Traversal MUST
+terminate on cyclic input.
+
+If either dataset traces back to the conclusion, the diagnosis is
+`CALIBRATED_TO_CONCLUSION`, even when the other dataset has separate provenance.
+Using the same observations under different dataset IDs also remains
+`CALIBRATED_TO_CONCLUSION`. Missing validation alone MUST NOT be described as
+calibration to the conclusion: it is `MISSING_INDEPENDENT_VALIDATION`.
+
+An unresolved source KO or parent dataset, a dataset without lineage, or a source
+label that becomes empty after whitespace normalization makes the fitted lineage
+incomplete. An unrelated valid branch MUST NOT conceal an unresolved branch.
+Such a parameter MUST NOT appear in `independent_kos`; absent a detected
+conclusion-derived calibration, it produces `MISSING_INDEPENDENT_VALIDATION`.
+Both patterns make warrant `UNWARRANTED` and the simulation Reality gate BLOCK.
+
+Leaf provenance source labels are compared after lowercasing, stripping leading
+and trailing whitespace, and collapsing internal whitespace. Different spellings
+of the same label do not establish different roots. This is label normalization,
+not authentication of a source or proof that two declared sources are independent.
+
+A PHYSICAL_OBSERVATION requires at least one referenced evidence record to resolve
+in storage before it can be independently grounded. Merely naming a nonexistent
+evidence ID is insufficient, including when assessing an observation as a standalone
+conclusion. Record existence does not certify its contents or independence.
 
 ### Explicit counter-evidence
 
