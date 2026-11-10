@@ -368,19 +368,73 @@ def test_guard_code_changed_rejects_with_unchanged_policy(bounded_fixture):
     assert original_guard_sha != "f" * 64
 
 
-def test_relative_runner_omitted_is_rejected(bounded_fixture):
-    """Command uses a relative runner path (no {repo}/ prefix). If the file
-    is tracked but missing from source_paths, the capture must be rejected.
-
-    This is a regression test: the old _extract_runner_paths only matched
-    {repo}/… prefixes and missed bare filenames."""
+@pytest.mark.parametrize("runner_arg,expected_path", [
+    ("test_runner.py", "test_runner.py"),
+    ("./test_runner.py", "test_runner.py"),
+    ("{repo}/test_runner.py", "test_runner.py"),
+    ("{repo}/./test_runner.py", "test_runner.py"),
+])
+def test_runner_path_normalisation_accepted(bounded_fixture, runner_arg, expected_path):
+    """All equivalent runner paths normalise to the same canonical path and
+    match source_paths when that canonical path is declared."""
     repo, commit, policy, root = bounded_fixture
-    # Change command to use relative runner path
-    policy["command"] = [sys.executable, "test_runner.py", "{output}", "pass"]
-    # source_paths omits the runner
+    policy["command"] = [sys.executable, runner_arg, "{output}", "pass"]
+    policy["source_paths"] = ["test_runner.py", "input.txt", "fixture.lock", "merge_policy.json"]
+    result = guard.capture(policy, repo, commit, REMOTE, root / "capture")
+    receipt = root / "capture/receipt/run.json"
+    check_result = guard.check(policy, repo, commit, REMOTE, receipt, root / "verified")
+    assert check_result["approved"] is True
+
+
+def test_runner_path_with_dotdot_normalised(bounded_fixture):
+    """Command uses sub/../test_runner.py — resolved to test_runner.py.
+    The intermediate directory must exist for the subprocess to succeed,
+    but the normalisation produces the canonical tracked path."""
+    repo, commit, policy, root = bounded_fixture
+    (repo / "sub").mkdir()
+    (repo / "sub" / ".gitkeep").write_text("")
+    git_fn = lambda *a: subprocess.check_output(["git", "-C", str(repo), *a]).decode().strip()
+    git_fn("add", "sub/.gitkeep")
+    git_fn("commit", "-qm", "Add sub dir")
+    new_commit = git_fn("rev-parse", "HEAD")
+    policy["command"] = [sys.executable, "sub/../test_runner.py", "{output}", "pass"]
+    policy["source_paths"] = ["test_runner.py", "input.txt", "fixture.lock", "merge_policy.json", "sub/.gitkeep"]
+    result = guard.capture(policy, repo, new_commit, REMOTE, root / "capture")
+    receipt = root / "capture/receipt/run.json"
+    check_result = guard.check(policy, repo, new_commit, REMOTE, receipt, root / "verified")
+    assert check_result["approved"] is True
+
+
+@pytest.mark.parametrize("runner_arg", [
+    "test_runner.py",
+    "./test_runner.py",
+    "{repo}/test_runner.py",
+    "{repo}/./test_runner.py",
+])
+def test_runner_path_normalisation_rejected_when_omitted(bounded_fixture, runner_arg):
+    """All equivalent runner paths normalise to the same canonical path;
+    omitting that path from source_paths must reject — regardless of the
+    form used in the command."""
+    repo, commit, policy, root = bounded_fixture
+    policy["command"] = [sys.executable, runner_arg, "{output}", "pass"]
     policy["source_paths"] = ["input.txt", "fixture.lock", "merge_policy.json"]
     with pytest.raises(EvidenceError, match="missing required files"):
         guard.capture(policy, repo, commit, REMOTE, root / "capture")
+
+
+def test_runner_path_with_dotdot_rejected_when_omitted(bounded_fixture):
+    """sub/../test_runner.py normalises to test_runner.py; omitting it rejects."""
+    repo, commit, policy, root = bounded_fixture
+    (repo / "sub").mkdir()
+    (repo / "sub" / ".gitkeep").write_text("")
+    git_fn = lambda *a: subprocess.check_output(["git", "-C", str(repo), *a]).decode().strip()
+    git_fn("add", "sub/.gitkeep")
+    git_fn("commit", "-qm", "Add sub dir")
+    new_commit = git_fn("rev-parse", "HEAD")
+    policy["command"] = [sys.executable, "sub/../test_runner.py", "{output}", "pass"]
+    policy["source_paths"] = ["input.txt", "fixture.lock", "merge_policy.json", "sub/.gitkeep"]
+    with pytest.raises(EvidenceError, match="missing required files"):
+        guard.capture(policy, repo, new_commit, REMOTE, root / "capture")
 
 
 def test_external_policy_same_name_not_rejected(bounded_fixture):
@@ -410,44 +464,6 @@ def test_external_policy_same_name_not_rejected(bounded_fixture):
     receipt = root / "capture/receipt/run.json"
     check_result = guard.check(bounded_minimal, repo, commit, REMOTE, receipt,
                                 root / "verified", policy_file_path=str(external_policy_path))
-    assert check_result["approved"] is True
-
-
-def test_relative_runner_with_directory_omitted_is_rejected(bounded_fixture):
-    """Command uses a relative runner path with a directory component
-    (tests/runner.py, ./runner.py). Normalised paths must match source_paths.
-
-    Regression: the old check rejected paths containing '/' in the relative
-    branch, or failed to strip leading './'."""
-    repo, commit, policy, root = bounded_fixture
-    git_fn = lambda *a: subprocess.check_output(["git", "-C", str(repo), *a]).decode().strip()
-    # Create tests/runner.py
-    (repo / "tests").mkdir(exist_ok=True)
-    (repo / "tests" / "runner.py").write_text(RUNNER)
-    git_fn("add", "tests/runner.py")
-    git_fn("commit", "-qm", "Add tests/runner.py")
-    new_commit = git_fn("rev-parse", "HEAD")
-
-    # Command uses tests/runner.py — normalised to "tests/runner.py"
-    policy["command"] = [sys.executable, "tests/runner.py", "{output}", "pass"]
-    policy["source_paths"] = ["input.txt", "fixture.lock", "merge_policy.json", "test_runner.py"]
-    # source_paths has test_runner.py but not tests/runner.py → must reject
-    with pytest.raises(EvidenceError, match="missing required files"):
-        guard.capture(policy, repo, new_commit, REMOTE, root / "capture")
-
-
-def test_dot_slash_runner_normalised(bounded_fixture):
-    """Command uses ./test_runner.py — the leading './' must be stripped
-    and the normalised path matched against source_paths."""
-    repo, commit, policy, root = bounded_fixture
-    # Command uses ./test_runner.py
-    policy["command"] = [sys.executable, "./test_runner.py", "{output}", "pass"]
-    # source_paths declares "test_runner.py" (normalised) → must pass
-    policy["source_paths"] = ["test_runner.py", "input.txt", "fixture.lock", "merge_policy.json"]
-    result = guard.capture(policy, repo, commit, REMOTE, root / "capture")
-    assert Path(result["receipt"]).is_file()
-    receipt = root / "capture/receipt/run.json"
-    check_result = guard.check(policy, repo, commit, REMOTE, receipt, root / "verified")
     assert check_result["approved"] is True
 
 
