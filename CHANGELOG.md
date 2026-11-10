@@ -2,6 +2,31 @@
 
 All notable changes to cognitive-harness (Superretometer).
 
+## [0.8.0] — 2026-11-10
+
+### Added
+- `MISSING_INDEPENDENT_VALIDATION` anti-pattern: fitted parameters without an
+  independent test dataset, with unregistered datasets, or with untraceable
+  lineage are blocked with the correct diagnosis, distinct from circularity.
+- Unified upstream traversal (`_trace_upstream`): single BFS over KOs and
+  datasets with shared visited sets, consistent coverage across all callers.
+- Provenance source normalisation: case, surrounding whitespace and internal
+  whitespace runs are canonicalised before root comparison.
+- Evidence validation: `PHYSICAL_OBSERVATION` KOs with dangling `evidence_ids`
+  are no longer treated as independently grounded.
+
+### Fixed
+- CALIBRATED_TO_CONCLUSION now fires only for actual circularity (training or
+  test data traces back to the conclusion, or train/test roots overlap).
+- Multi-hop circularity: dataset lineage walks KO upstream edges to completion
+  (DERIVED_FROM, TRANSFERRED_FROM, upstream_ko_ids), not just one hop.
+- Dataset cycles: shared visited sets prevent `RecursionError` on cyclic
+  `derived_from_dataset_ids`.
+- Sourceless dataset no longer suppresses leaf KO root collection.
+
+### Changed
+- CALIBRATED_TO_CONCLUSION for "no test dataset" is now MISSING_INDEPENDENT_VALIDATION.
+
 ## [Unreleased]
 
 ### Added

@@ -5,8 +5,8 @@
 ## Repository version and updates
 
 <!-- BEGIN generated:package-metadata -->
-The current repository package version is **0.7.1** (see `pyproject.toml`).
-[Version notes](docs/releases/v0.7.1.md) describe their release status; [the changelog](CHANGELOG.md) tracks subsequent changes on main.
+The current repository package version is **0.8.0** (see `pyproject.toml`).
+[Version notes](docs/releases/v0.8.0.md) describe their release status; [the changelog](CHANGELOG.md) tracks subsequent changes on main.
 <!-- END generated:package-metadata -->
 A Git checkout, a published package and a running MCP process can be different
 revisions. [Update and verify a local MCP installation](docs/local-update.md).
