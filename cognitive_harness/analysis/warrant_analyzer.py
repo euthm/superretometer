@@ -870,6 +870,101 @@ class WarrantAnalyzer:
 
         return result
 
+    def _trace_upstream(
+        self, *, start_ko_id: str | None = None, start_dataset: 'Dataset | None' = None,
+    ) -> tuple[set[str], set[str]]:
+        """Unified upstream traversal over KOs and datasets.
+
+        Returns ``(visited_ko_ids, provenance_roots)``:
+        - ``visited_ko_ids``: every KO ID encountered during traversal
+        - ``provenance_roots``: canonicalised source strings of leaf KOs
+
+        Follows the same edges as the old ``_trace_provenance_roots``:
+        DERIVED_FROM / TRANSFERRED_FROM relations, ``derivation.upstream_ko_ids``,
+        dataset ``source_ko_id``, ``derived_from_dataset_ids``, and the
+        training/test dataset links on fitted parameters.
+
+        Uses shared ``visited`` sets for KOs and datasets to prevent
+        infinite loops on cyclic graphs.
+        """
+        visited_ko: set[str] = set()
+        visited_ds: set[str] = set()
+        roots: set[str] = set()
+
+        # Seed the queue with KOs and datasets
+        ko_queue: list[str] = []
+        ds_queue: list['Dataset'] = []
+
+        if start_ko_id is not None:
+            ko_queue.append(start_ko_id)
+        if start_dataset is not None:
+            ds_queue.append(start_dataset)
+
+        while ko_queue or ds_queue:
+            # ── Process KOs ────────────────────────────────────────
+            while ko_queue:
+                ko_id = ko_queue.pop(0)
+                if ko_id in visited_ko:
+                    continue
+                visited_ko.add(ko_id)
+
+                ko = self.storage.get_ko(ko_id)
+                if ko is None:
+                    # Missing KO is a leaf — add id as fallback root
+                    roots.add(ko_id)
+                    continue
+
+                has_upstream = False
+
+                # Follow derivation.upstream_ko_ids
+                if ko.derivation:
+                    for up_id in ko.derivation.upstream_ko_ids:
+                        has_upstream = True
+                        if up_id not in visited_ko:
+                            ko_queue.append(up_id)
+
+                    # Follow dataset links (training and test)
+                    for ds_field in (ko.derivation.training_dataset_id,
+                                     ko.derivation.test_dataset_id):
+                        if ds_field:
+                            ds = self.storage.get_dataset(ds_field)
+                            if ds:
+                                has_upstream = True
+                                ds_queue.append(ds)
+
+                # Follow DERIVED_FROM / TRANSFERRED_FROM relations
+                for rel in ko.relations:
+                    if rel.type in (RelationType.DERIVED_FROM,
+                                    RelationType.TRANSFERRED_FROM):
+                        has_upstream = True
+                        if rel.to not in visited_ko:
+                            ko_queue.append(rel.to)
+
+                # Leaf KO: collect provenance root
+                if not has_upstream:
+                    if ko.provenance and ko.provenance.source:
+                        roots.add(ko.provenance.source)
+                    else:
+                        roots.add(ko_id)
+
+            # ── Process datasets ───────────────────────────────────
+            while ds_queue:
+                ds = ds_queue.pop(0)
+                if ds.id in visited_ds:
+                    continue
+                visited_ds.add(ds.id)
+
+                if ds.source_ko_id and ds.source_ko_id not in visited_ko:
+                    ko_queue.append(ds.source_ko_id)
+
+                for parent_id in ds.derived_from_dataset_ids:
+                    if parent_id not in visited_ds:
+                        parent_ds = self.storage.get_dataset(parent_id)
+                        if parent_ds:
+                            ds_queue.append(parent_ds)
+
+        return visited_ko, roots
+
     def _trace_provenance_roots(self, ko_id: str) -> set[str]:
         """Trace a KO back to its ultimate provenance roots.
 
@@ -879,78 +974,12 @@ class WarrantAnalyzer:
         a single root.  If a leaf has no provenance (or an empty source),
         its KO id is used as a fallback.
         """
-        visited: set[str] = set()
-        roots: set[str] = set()
-        queue = [ko_id]
-
-        while queue:
-            current = queue.pop(0)
-            if current in visited:
-                continue
-            visited.add(current)
-
-            ko = self.storage.get_ko(current)
-            if ko is None:
-                roots.add(current)
-                continue
-
-            has_upstream = False
-
-            # Follow derivation upstream
-            if ko.derivation:
-                for up_id in ko.derivation.upstream_ko_ids:
-                    has_upstream = True
-                    if up_id not in visited:
-                        queue.append(up_id)
-
-                # Follow datasets
-                if ko.derivation.training_dataset_id:
-                    ds = self.storage.get_dataset(ko.derivation.training_dataset_id)
-                    if ds and ds.source_ko_id:
-                        has_upstream = True
-                        if ds.source_ko_id not in visited:
-                            queue.append(ds.source_ko_id)
-                if ko.derivation.test_dataset_id:
-                    ds = self.storage.get_dataset(ko.derivation.test_dataset_id)
-                    if ds and ds.source_ko_id:
-                        has_upstream = True
-                        if ds.source_ko_id not in visited:
-                            queue.append(ds.source_ko_id)
-
-            # Follow derivation relations
-            for rel in ko.relations:
-                if rel.type in (RelationType.DERIVED_FROM, RelationType.TRANSFERRED_FROM):
-                    has_upstream = True
-                    if rel.to not in visited:
-                        queue.append(rel.to)
-
-            if not has_upstream:
-                if ko.provenance and ko.provenance.source:
-                    roots.add(ko.provenance.source)
-                else:
-                    roots.add(current)
-
+        _, roots = self._trace_upstream(start_ko_id=ko_id)
         return roots
 
     def _trace_dataset_roots(self, dataset: 'Dataset') -> set[str]:
-        """Trace a dataset back to its ultimate source KOs."""
-        visited: set[str] = set()
-        roots: set[str] = set()
-
-        if dataset.source_ko_id:
-            roots |= self._trace_provenance_roots(dataset.source_ko_id)
-
-        # If derived from other datasets, trace those
-        for ds_id in dataset.derived_from_dataset_ids:
-            parent_ds = self.storage.get_dataset(ds_id)
-            if parent_ds:
-                if ds_id not in visited:
-                    visited.add(ds_id)
-                    roots |= self._trace_dataset_roots(parent_ds)
-
-        if not roots and dataset.source_ko_id:
-            roots.add(dataset.source_ko_id)
-
+        """Trace a dataset back to its ultimate provenance roots."""
+        _, roots = self._trace_upstream(start_dataset=dataset)
         return roots
 
     def _dataset_lineage_ko_ids(self, dataset: 'Dataset') -> set[str]:
@@ -959,54 +988,8 @@ class WarrantAnalyzer:
         Walks source_ko_id and derived_from_dataset_ids, collecting every
         KO ID encountered (including intermediate KOs and the final source).
         Used to check whether a dataset traces back to the conclusion KO.
-
-        Follows the same upstream edges as ``_trace_provenance_roots``:
-        DERIVED_FROM and TRANSFERRED_FROM relations, derivation.upstream_ko_ids,
-        and derivation dataset links — so coverage is consistent.
         """
-        visited_ds: set[str] = set()
-        visited_ko: set[str] = set()
-        ko_ids: set[str] = set()
-        ds_queue = [dataset]
-
-        while ds_queue:
-            ds = ds_queue.pop(0)
-
-            if ds.source_ko_id and ds.source_ko_id not in visited_ko:
-                ko_ids.add(ds.source_ko_id)
-                visited_ko.add(ds.source_ko_id)
-
-                # Walk the KO upstream using the same edges as _trace_provenance_roots
-                ko = self.storage.get_ko(ds.source_ko_id)
-                if ko:
-                    # derivation.upstream_ko_ids
-                    if ko.derivation:
-                        for up_id in ko.derivation.upstream_ko_ids:
-                            ko_ids.add(up_id)
-                            if up_id not in visited_ko:
-                                visited_ko.add(up_id)
-                    # DERIVED_FROM / TRANSFERRED_FROM relations
-                    for rel in ko.relations:
-                        if rel.type in (RelationType.DERIVED_FROM,
-                                        RelationType.TRANSFERRED_FROM):
-                            ko_ids.add(rel.to)
-                            # Continue walking from upstream KO
-                            if rel.to not in visited_ko:
-                                visited_ko.add(rel.to)
-                                up_ko = self.storage.get_ko(rel.to)
-                                if up_ko and up_ko.provenance and up_ko.provenance.source:
-                                    # If upstream KO has no further derivation,
-                                    # it's a leaf — but we still need to check
-                                    # if its ID is the conclusion
-                                    pass
-
-            for parent_id in ds.derived_from_dataset_ids:
-                if parent_id not in visited_ds:
-                    visited_ds.add(parent_id)
-                    parent_ds = self.storage.get_dataset(parent_id)
-                    if parent_ds:
-                        ds_queue.append(parent_ds)
-
+        ko_ids, _ = self._trace_upstream(start_dataset=dataset)
         return ko_ids
 
     # ── Independent grounding check ─────────────────────────────────────
