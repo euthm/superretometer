@@ -190,7 +190,8 @@ class WarrantAnalyzer:
                           AntiPattern.TAUTOLOGICAL_VALIDATION,
                           AntiPattern.CIRCULAR_DEPENDENCY,
                           AntiPattern.PHYSICALLY_UNREALIZABLE,
-                          AntiPattern.UNSUPPORTED_TRANSFER)
+                          AntiPattern.UNSUPPORTED_TRANSFER,
+                          AntiPattern.MISSING_INDEPENDENT_VALIDATION)
             for d in diagnoses
         )
 
@@ -428,9 +429,12 @@ class WarrantAnalyzer:
         self, ko: KnowledgeObject, conclusion_ko_id: str, path: list[str],
     ) -> AntiPatternDiagnosis | None:
         """Structural: fitted parameter is calibrated to the conclusion if
-        its training and test datasets share provenance roots, if the
-        training or test data traces back to the conclusion itself, or
-        if it has no test dataset (fitted and tested on same data).
+        its training or test data traces back to the conclusion itself,
+        or if training and test datasets share provenance roots.
+
+        Returns MISSING_INDEPENDENT_VALIDATION when the parameter lacks
+        a hold-out split or has unregistered/untraceable datasets — these
+        block warrant but are distinct from circularity.
 
         The circularity checks run first: a parameter trained on the
         conclusion (or with a test set derived from it) is fundamentally
@@ -446,7 +450,7 @@ class WarrantAnalyzer:
         train_ds = self.storage.get_dataset(training_id)
         test_ds = self.storage.get_dataset(test_id) if test_id else None
 
-        # --- 0. Circularity checks (run before independence checks) ---
+        # --- 0. Circularity checks (CALIBRATED_TO_CONCLUSION) ---
         # Training dataset traces back to the conclusion.
         if train_ds:
             train_ko_ids = self._dataset_lineage_ko_ids(train_ds)
@@ -464,7 +468,6 @@ class WarrantAnalyzer:
                 )
 
         # Test dataset traces back to the conclusion — equally circular.
-        # A test set derived from the conclusion can't validate the fit.
         if test_ds:
             test_ko_ids = self._dataset_lineage_ko_ids(test_ds)
             if conclusion_ko_id in test_ko_ids:
@@ -480,19 +483,21 @@ class WarrantAnalyzer:
                     resolution_hint="Use a test dataset from independent observations, not derived from the conclusion.",
                 )
 
-        # --- 1. No test dataset at all → fitted parameter is pure calibration ---
-        if not test_id or test_ds is None:
-            if not test_id:
-                return AntiPatternDiagnosis(
-                    pattern=AntiPattern.CALIBRATED_TO_CONCLUSION,
-                    offending_ko_ids=[ko.id],
-                    justification_path=[ko.id],
-                    violated_condition="Fitted parameter has no independent test dataset.",
-                    resolution_hint="Add a test dataset that is disjoint from the training dataset.",
-                )
-            # test_id set but dataset not found
+        # --- 1. Missing independent validation (MISSING_INDEPENDENT_VALIDATION) ---
+        # No test dataset at all
+        if not test_id:
             return AntiPatternDiagnosis(
-                pattern=AntiPattern.CALIBRATED_TO_CONCLUSION,
+                pattern=AntiPattern.MISSING_INDEPENDENT_VALIDATION,
+                offending_ko_ids=[ko.id],
+                justification_path=[ko.id],
+                violated_condition="Fitted parameter has no independent test dataset.",
+                resolution_hint="Add a test dataset that is disjoint from the training dataset.",
+            )
+
+        # Test dataset referenced but not found
+        if test_ds is None:
+            return AntiPatternDiagnosis(
+                pattern=AntiPattern.MISSING_INDEPENDENT_VALIDATION,
                 offending_ko_ids=[ko.id],
                 justification_path=[ko.id],
                 violated_condition="Test dataset not found in storage.",
@@ -502,28 +507,25 @@ class WarrantAnalyzer:
         # Training dataset not found
         if train_ds is None:
             return AntiPatternDiagnosis(
-                pattern=AntiPattern.CALIBRATED_TO_CONCLUSION,
+                pattern=AntiPattern.MISSING_INDEPENDENT_VALIDATION,
                 offending_ko_ids=[ko.id],
                 justification_path=[ko.id],
                 violated_condition="Training dataset not found in storage.",
                 resolution_hint="Register the training dataset.",
             )
 
-        # --- 2. Train/test provenance root overlap ---
+        # --- 2. Train/test provenance root overlap (CALIBRATED_TO_CONCLUSION) ---
         train_roots = self._trace_dataset_roots(train_ds)
         test_roots = self._trace_dataset_roots(test_ds)
 
-        # Untraceable lineage is not a clean split. Two datasets with no
-        # source_ko_id have an empty intersection, which the overlap test
-        # below cannot distinguish from genuine disjointness — so an absent
-        # lineage would silently read as independent evidence.
+        # Untraceable lineage: can't establish independence
         if not train_roots or not test_roots:
             missing = [
                 name for name, roots in (("training", train_roots), ("test", test_roots))
                 if not roots
             ]
             return AntiPatternDiagnosis(
-                pattern=AntiPattern.CALIBRATED_TO_CONCLUSION,
+                pattern=AntiPattern.MISSING_INDEPENDENT_VALIDATION,
                 offending_ko_ids=[ko.id],
                 violated_condition=(
                     f"Dataset lineage is untraceable for: {', '.join(missing)}. "

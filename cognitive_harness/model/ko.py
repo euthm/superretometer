@@ -95,6 +95,7 @@ class AntiPattern(str, Enum):
     CONTRADICTED = "contradicted"
     UNSUPPORTED_TRANSFER = "unsupported_transfer"
     CIRCULAR_DEPENDENCY = "circular_dependency"
+    MISSING_INDEPENDENT_VALIDATION = "missing_independent_validation"
 
 
 # ── 6. Confidence ─────────────────────────────────────────────────────────
