@@ -168,10 +168,22 @@ def test_cli_check_reports_each_control_and_final_json(fixture):
                           capture_output=True, text=True, timeout=15)
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert json.loads(proc.stdout)["approved"] is True
+    published = json.loads((root / "check/merge-result.json").read_text())
+    assert published == json.loads(proc.stdout)
     for control in ("baseline", "commit_mismatch", "missing_validator"):
         assert f'"control": "{control}"' in proc.stderr
     for phase in ("verify_receipt", "import", "export", "verify_bundle", "complete"):
         assert f'"phase": "{phase}"' in proc.stderr
+
+
+def test_supervised_worker_cannot_publish_final_merge_result(fixture, monkeypatch):
+    repo, commit, policy, root = fixture
+    result = guard.capture(policy, repo, commit, REMOTE, root / "capture")
+    monkeypatch.setattr(guard, "_SUPERVISED", True)
+    checked = guard.check(policy, repo, commit, REMOTE, result["receipt"], root / "check")
+    assert checked["approved"] is True
+    assert (root / "check/bundle/SHA256SUMS").is_file()
+    assert not (root / "check/merge-result.json").exists()
 
 
 def test_cli_deadline_rejects_instead_of_waiting_for_test_timeout(fixture):

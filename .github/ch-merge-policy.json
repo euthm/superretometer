@@ -16,7 +16,7 @@
     "kind": "junit/v1",
     "report": "results.xml"
   },
-  "minimum_executed": 458,
+  "minimum_executed": 459,
   "required_test_ids": [
     "tests.adversarial.test_v05::test_calibrated",
     "tests.adversarial.test_v05::test_canonical_dependent",
@@ -182,6 +182,7 @@
     "tests.conformance.test_merge_guard_resources::test_large_receipt_rejected_before_json_read_or_verification",
     "tests.conformance.test_merge_guard_resources::test_limit_boundary_is_inclusive_and_explicit_increase_is_possible",
     "tests.conformance.test_merge_guard_resources::test_reviewed_bounded_set_fits_budget_and_keeps_controls",
+    "tests.conformance.test_merge_guard_resources::test_supervised_worker_cannot_publish_final_merge_result",
     "tests.conformance.test_merge_guard_resources::test_supervision_reports_heartbeat_and_retains_final_result",
     "tests.conformance.test_merge_guard_resources::test_timeout_discards_worker_approval_and_keeps_artifacts",
     "tests.conformance.test_merge_guard_resources::test_timeout_kills_descendant_process",

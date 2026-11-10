@@ -190,7 +190,10 @@ final JSON document**, so existing machine readers can keep parsing it.
 The POSIX CLI supervises an isolated process group. On deadline, Ctrl-C or SIGTERM it
 kills the worker group and returns nonzero with `approved: false`; buffered
 worker output cannot publish premature approval. Partial artifacts are retained
-without being promoted to finalized evidence. Process reap/OS scheduling can add
+without being promoted to a completed merge approval. They may contain completed
+lower-level receipts/evaluations; the CLI publishes top-level `merge-result.json`
+only after the supervising parent confirms normal completion within the deadline.
+Process reap/OS scheduling can add
 cleanup latency. Unsupported hosts reject rather than silently omit supervision.
 Direct Python `capture`/`check` API calls enforce count/size limits but require
 their caller to supervise wall time. Other #18 CLI commands are unchanged.
