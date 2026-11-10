@@ -151,7 +151,7 @@ def test_f1_control_independent_train_and_test_is_warranted():
 def test_f2_missing_holdout_on_independent_data_is_not_labelled_calibrated_to_conclusion():
     """Fit on independent lab data with no test split. Blocking is right;
     the label is wrong — the training target is unrelated to the conclusion.
-    Needs its own pattern (a spec decision: the site says *six* anti-patterns)."""
+    The missing-validation diagnosis must remain distinct from calibration."""
     s = InMemoryStorage()
     _observation(s, "bench-train", "bench series A")
     s.create_dataset(Dataset(id="ds-train", name="train", source_ko_id="bench-train"))
@@ -159,10 +159,11 @@ def test_f2_missing_holdout_on_independent_data_is_not_labelled_calibrated_to_co
     _conclusion(s, C_DEPENDS_ON_P)
     result = _warrant(s)
 
-    assert result.warrant_status != WarrantStatus.WARRANTED          # passes today
+    assert result.warrant_status == WarrantStatus.UNWARRANTED
     assert any("p-magnetic" in d.offending_ko_ids
-               for d in result.anti_pattern_diagnoses)               # passes today
-    assert AntiPattern.CALIBRATED_TO_CONCLUSION not in _patterns(result)  # fails today
+               for d in result.anti_pattern_diagnoses)
+    assert AntiPattern.MISSING_INDEPENDENT_VALIDATION in _patterns(result)
+    assert AntiPattern.CALIBRATED_TO_CONCLUSION not in _patterns(result)
 
 
 # ── F3: provenance root identity is a raw string ─────────────────────────
