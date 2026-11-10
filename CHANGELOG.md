@@ -5,6 +5,11 @@ All notable changes to cognitive-harness (Superretometer).
 ## [Unreleased]
 
 ### Added
+- HA controls for merge evidence: read-only scope preflight, reviewed source/
+  receipt limits, POSIX process-group operation deadlines, phase/heartbeat
+  diagnostics on stderr, and early rejection of existing output paths. Resource
+  exhaustion never narrows coverage or produces approval; gate/warrant semantics
+  and historical receipts remain unchanged.
 - Fail-closed CI merge adapter around #18: reviewed regression policy, complete
   tracked-file coverage, exact commit/repository binding, seven gates, isolated
   negative controls and verified bundle export. A default-branch workflow keeps
