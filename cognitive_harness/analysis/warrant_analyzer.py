@@ -928,7 +928,7 @@ class WarrantAnalyzer:
                                      ko.derivation.test_dataset_id):
                         if ds_field:
                             ds = self.storage.get_dataset(ds_field)
-                            if ds:
+                            if ds and (ds.source_ko_id or ds.derived_from_dataset_ids):
                                 has_upstream = True
                                 ds_queue.append(ds)
 
