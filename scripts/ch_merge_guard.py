@@ -43,6 +43,17 @@ def _extract_runner_paths(command):
     return result
 
 
+def _guard_identity(policy):
+    """Return the canonical SHA of the reviewed policy document.
+
+    Stored in the receipt as environment.tools["ch_merge_guard"] so that
+    validate_run can verify the receipt was produced under the same policy.
+    A mismatch means the evidence was captured against a different,
+    potentially unreviewed policy.
+    """
+    return sha(canonical(policy))
+
+
 def _enforce_minimum_set(source_paths, tracked_paths, command):
     """Reject if tracked files referenced by the command are missing from source_paths.
 
@@ -145,6 +156,9 @@ def capture(policy, repo, commit, expected_remote, output):
     expected_checkout(repo, commit, expected_remote)
     output = fresh_output(output, repo)
     tracked = tracked_sources(repo)
+    # Guard identity: policy SHA recorded as a tool observation so validate_run
+    # can verify the receipt was produced under this exact reviewed policy.
+    guard_sha = _guard_identity(policy)
     profile = {
         "repo": str(repo), "source_paths": tracked, "lockfiles": policy["lockfiles"],
         "archive": {"path": str(output / "archive"), "locator": "ci-artifact://ch-evidence",
@@ -153,9 +167,12 @@ def capture(policy, repo, commit, expected_remote, output):
                   "declared_remote": expected_remote, "requested_commit": commit,
                   "falsifier": "Any failed or missing required test, unexpected skip, source change, or different commit invalidates this bounded claim"},
         "acceptance": acceptance_rules(policy), "parser": policy["parser"],
-        "environment": {"tools": {"python": [sys.executable, "--version"]}, "services": {},
-                        "exclusions": ["Runner-reported observations; no independent certification or production approval",
-                                       "External services and dependencies beyond declared lockfiles/submodules are not verified"]},
+        "environment": {"tools": {
+            "python": [sys.executable, "--version"],
+            "ch_merge_guard": ["printf", "%s", guard_sha]},
+            "services": {},
+            "exclusions": ["Runner-reported observations; no independent certification or production approval",
+                           "External services and dependencies beyond declared lockfiles/submodules are not verified"]},
         "timeout_seconds": policy["timeout_seconds"],
     }
     result = record(profile, policy["command"])
@@ -187,6 +204,13 @@ def validate_run(policy, repo, commit, expected_remote, receipt):
     _enforce_minimum_set(code["source_paths"], tracked, policy["command"])
     if code["source_paths"] != tracked or code["lockfile_paths"] != sorted(policy["lockfiles"]):
         raise EvidenceError("Receipt omits tracked sources or declared lockfiles")
+    # Guard identity: receipt must have been produced under this exact policy.
+    expected_guard_sha = _guard_identity(policy)
+    receipt_guard_sha = run["environment"]["tools"].get("ch_merge_guard")
+    if receipt_guard_sha != expected_guard_sha:
+        raise EvidenceError(
+            f"Guard identity mismatch: receipt policy SHA {receipt_guard_sha or 'absent'} != {expected_guard_sha[:16]}…"
+        )
     observed_argv = run["execution"]["argv"]
     literal_argv_matches = len(observed_argv) == len(policy["command"]) and all(
         re.fullmatch(re.escape(template).replace(r"\{repo\}", ".+").replace(r"\{output\}", ".+"), actual)
