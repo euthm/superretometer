@@ -58,34 +58,36 @@ def _policy_sha(policy):
 
 
 def _normalize_repo_path(arg, repo):
-    """Resolve a command argument to a repo-relative path, or return None.
+    """Resolve a command argument to a canonical repo-relative path, or None.
 
-    Handles:
-    - ``{repo}/path/to/file`` → ``path/to/file``
-    - ``./path/to/file`` → ``path/to/file``
-    - ``path/to/file`` (relative, e.g. ``tests/runner.py``)
-    - bare ``file.py``
+    Single normalisation pipeline — no early returns:
+    1. Reject non-file arguments (env vars, flags, shell operators).
+    2. Substitute ``{repo}`` with the resolved repo root path.
+    3. Join to repo root if relative, then resolve (normalises ``./``, ``../``).
+    4. Verify the resolved path lives inside the repo root.
+    5. Return the canonical ``relative_to(repo)`` path.
 
-    Only file arguments are returned; absolute paths, env vars (``FOO=bar``),
-    module flags (``-m pytest``), and shell operators are ignored.
-    The result is verified to exist as a file inside the repo root.
+    The returned path matches Git ls-files output (forward slashes, no dot segments).
     """
-    if arg.startswith("{repo}/"):
-        return arg[len("{repo}/"):]
-    # Skip absolute paths, env assignments, flags, shell operators
-    if arg.startswith("/") or "=" in arg or arg.startswith("-") or arg in ("|", "&&", "||"):
-        return None
-    # Strip leading ./ for normalisation
-    rel = arg
-    while rel.startswith("./"):
-        rel = rel[2:]
-    if not rel:
+    # Reject non-file arguments
+    if "=" in arg or arg.startswith("-") or arg in ("|", "&&", "||"):
         return None
     repo_resolved = Path(repo).resolve()
-    candidate = (repo_resolved / rel)
-    if candidate.is_file():
-        return rel
-    return None
+    # Substitute {repo} placeholder
+    substituted = arg.replace("{repo}", str(repo_resolved))
+    # Join to repo root if relative, then resolve (eliminates ./ and ../)
+    # strict=False allows resolution even when intermediate directories don't exist
+    if Path(substituted).is_absolute():
+        candidate = Path(substituted)
+    else:
+        candidate = (repo_resolved / substituted)
+    candidate = candidate.resolve(strict=False)
+    # Must live inside the repo root
+    if not str(candidate).startswith(str(repo_resolved)):
+        return None
+    if not candidate.is_file():
+        return None
+    return candidate.relative_to(repo_resolved).as_posix()
 
 
 def _extract_runner_paths(command, repo):
