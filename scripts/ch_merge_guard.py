@@ -49,6 +49,7 @@ POLICY_FIELDS = {"schema_version", "command", "parser", "minimum_executed",
 # Bounded-coverage fields — all three required together.
 BOUNDED_FIELDS = {"coverage_mode", "source_paths", "coverage_rationale"}
 _PROGRESS = None
+_SUPERVISED = False
 
 
 def progress(phase, **details):
@@ -563,7 +564,11 @@ def check(policy, repo, commit, expected_remote, receipt, output, policy_file_pa
         "negative_controls": evaluations[1:], "export": exported,
         "trust": "Scoped CI acceptance; runner-reported, not independent certification or deployment approval"
     }
-    write(output / "merge-result.json", result)
+    # In the CLI only the supervising parent publishes the final merge verdict,
+    # after the entire worker has exited normally within its deadline. Completed
+    # lower-level evaluations in a partial bundle are not a merge approval.
+    if not _SUPERVISED:
+        write(output / "merge-result.json", result)
     progress("complete", approved=True)
     return result
 
@@ -583,8 +588,9 @@ def parser():
 
 
 def _worker_main(argv):
-    global _PROGRESS
+    global _PROGRESS, _SUPERVISED
     _PROGRESS = Progress()
+    _SUPERVISED = True
     args = parser().parse_args(argv)
     try:
         policy = policy_at(args.policy)
@@ -630,6 +636,10 @@ def main(argv=None):
         result = json.loads(output)
         if code != 0 and result.get("approved") is True:
             raise EvidenceError("Failed worker cannot publish approval")
+        if code == 0 and args.operation == "check" and not args.preflight:
+            if result.get("approved") is not True:
+                raise EvidenceError("Completed check worker did not approve")
+            write(Path(args.output).resolve() / "merge-result.json", result)
         print(json.dumps(result, sort_keys=True))
         return code
     except (EvidenceError, OSError, ValueError, TypeError) as exc:

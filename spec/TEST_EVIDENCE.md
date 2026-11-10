@@ -287,7 +287,10 @@ Progress diagnostics MUST be separate from the machine-readable final response.
 The reference POSIX CLI supervises the complete worker operation and terminates
 its process group on deadline or interruption. It MUST suppress any buffered
 worker approval after incomplete execution, return nonzero, and preserve partial
-artifacts without promoting them to finalized evidence. Cleanup/scheduling latency
+artifacts without promoting them to a completed merge approval. Lower-level
+receipts/evaluations may be complete inside partial artifacts; the final CLI
+`merge-result.json` MUST be published only by the supervising parent after normal
+worker completion within its deadline. Cleanup/scheduling latency
 is not part of a real-time guarantee. Unsupported supervision hosts reject.
 Direct Python API users supply their own wall-time supervision. Test-command
 timeouts alone do not satisfy the complete CLI operation deadline.
