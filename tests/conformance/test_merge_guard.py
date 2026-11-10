@@ -230,17 +230,39 @@ def test_bounded_missing_policy_file_is_rejected(fixture):
         guard.check(policy, repo, new_commit, REMOTE, run["receipt"], root / "verified4")
 
 
+def test_bounded_coverage_records_guard_identity(fixture):
+    """A receipt produced by guard.capture must carry the policy SHA in
+    environment.tools['ch_merge_guard']."""
+    repo, commit, _, root = fixture
+    receipt_path, policy = captured(fixture)
+    run_data = json.loads((receipt_path / "run.json").read_text())
+    guard_sha = run_data["environment"]["tools"].get("ch_merge_guard")
+    expected = guard.sha(guard.canonical(policy))
+    assert guard_sha == expected
+
+
+def test_guard_identity_mismatch_rejected(fixture):
+    """A receipt captured under a different policy must be rejected even if
+    all source bytes, test results and acceptance criteria are identical."""
+    repo, commit, policy, root = fixture
+    receipt_path, _ = captured(fixture)
+    # Alter the policy after capture — the receipt's guard SHA will no longer match.
+    policy["minimum_executed"] = 1  # weaken the floor
+    with pytest.raises(EvidenceError, match="Guard identity mismatch"):
+        guard.check(policy, repo, commit, REMOTE, receipt_path, root / "verified")
+
+
 def test_bounded_only_input_txt_rejected(fixture):
     """Multiple source files tracked; declaring only input.txt rejects because
     runner.py is referenced by the command and tracked."""
     repo, commit, policy, root = fixture
     # Add another tracked file to make the source set larger
     (repo / "conftest.py").write_text("# test config")
-    git = lambda *a: subprocess.check_output(["git", "-C", str(repo), *a]).decode().strip()
-    git("add", "conftest.py")
-    git("commit", "-qm", "Add conftest")
-    commit = git("rev-parse", "HEAD")
-    # Profile declares only input.txt, omits runner.py referenced by command
+    git_fn = lambda *a: subprocess.check_output(["git", "-C", str(repo), *a]).decode().strip()
+    git_fn("add", "conftest.py")
+    git_fn("commit", "-qm", "Add conftest")
+    commit = git_fn("rev-parse", "HEAD")
+    # Profile declares only input.txt + conftest.py, omits runner.py referenced by command
     profile = {"repo": str(repo), "source_paths": ["input.txt", "conftest.py"],
                "lockfiles": ["fixture.lock"],
                "archive": {"path": str(root / "archive2"), "locator": "fixture://test", "retention": "fixture only"},
