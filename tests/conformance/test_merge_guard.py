@@ -366,3 +366,48 @@ def test_guard_code_changed_rejects_with_unchanged_policy(bounded_fixture):
     # Verify: policy SHA would still match, guard SHA is what rejected
     assert original_policy_sha is not None
     assert original_guard_sha != "f" * 64
+
+
+def test_relative_runner_omitted_is_rejected(bounded_fixture):
+    """Command uses a relative runner path (no {repo}/ prefix). If the file
+    is tracked but missing from source_paths, the capture must be rejected.
+
+    This is a regression test: the old _extract_runner_paths only matched
+    {repo}/… prefixes and missed bare filenames."""
+    repo, commit, policy, root = bounded_fixture
+    # Change command to use relative runner path
+    policy["command"] = [sys.executable, "test_runner.py", "{output}", "pass"]
+    # source_paths omits the runner
+    policy["source_paths"] = ["input.txt", "fixture.lock", "merge_policy.json"]
+    with pytest.raises(EvidenceError, match="missing required files"):
+        guard.capture(policy, repo, commit, REMOTE, root / "capture")
+
+
+def test_external_policy_same_name_not_rejected(bounded_fixture):
+    """An external policy file that shares its basename with a tracked file
+    must NOT trigger the minimum-set policy check. The policy path resolves
+    outside the candidate repo, so _policy_relative_to_repo returns None.
+
+    Regression: the old check matched on .name alone and rejected valid
+    captures when the external --policy file happened to share a filename
+    with a file tracked in the candidate worktree."""
+    repo, commit, policy, root = bounded_fixture
+    # Write the policy to a path OUTSIDE the candidate repo
+    external_policy_path = root / "external_merge_policy.json"
+    policy_data = {k: v for k, v in policy.items()
+                   if k not in ("coverage_mode", "source_paths", "coverage_rationale")}
+    external_policy_path.write_text(json.dumps(policy_data))
+    # source_paths includes runner but omits merge_policy.json
+    # The repo HAS merge_policy.json tracked, but the --policy file is external.
+    # The minimum set should only require the runner (from command), not the policy.
+    bounded_minimal = {**policy_data,
+                       "coverage_mode": "bounded",
+                       "source_paths": ["test_runner.py", "input.txt", "fixture.lock"],
+                       "coverage_rationale": "Policy file is external; only runner and data are in candidate repo."}
+    result = guard.capture(bounded_minimal, repo, commit, REMOTE, root / "capture",
+                           policy_file_path=str(external_policy_path))
+    assert Path(result["receipt"]).is_file()
+    receipt = root / "capture/receipt/run.json"
+    check_result = guard.check(bounded_minimal, repo, commit, REMOTE, receipt,
+                               root / "verified", policy_file_path=str(external_policy_path))
+    assert check_result["approved"] is True
