@@ -409,5 +409,82 @@ def test_external_policy_same_name_not_rejected(bounded_fixture):
     assert Path(result["receipt"]).is_file()
     receipt = root / "capture/receipt/run.json"
     check_result = guard.check(bounded_minimal, repo, commit, REMOTE, receipt,
-                               root / "verified", policy_file_path=str(external_policy_path))
+                                root / "verified", policy_file_path=str(external_policy_path))
     assert check_result["approved"] is True
+
+
+def test_relative_runner_with_directory_omitted_is_rejected(bounded_fixture):
+    """Command uses a relative runner path with a directory component
+    (tests/runner.py, ./runner.py). Normalised paths must match source_paths.
+
+    Regression: the old check rejected paths containing '/' in the relative
+    branch, or failed to strip leading './'."""
+    repo, commit, policy, root = bounded_fixture
+    git_fn = lambda *a: subprocess.check_output(["git", "-C", str(repo), *a]).decode().strip()
+    # Create tests/runner.py
+    (repo / "tests").mkdir(exist_ok=True)
+    (repo / "tests" / "runner.py").write_text(RUNNER)
+    git_fn("add", "tests/runner.py")
+    git_fn("commit", "-qm", "Add tests/runner.py")
+    new_commit = git_fn("rev-parse", "HEAD")
+
+    # Command uses tests/runner.py — normalised to "tests/runner.py"
+    policy["command"] = [sys.executable, "tests/runner.py", "{output}", "pass"]
+    policy["source_paths"] = ["input.txt", "fixture.lock", "merge_policy.json", "test_runner.py"]
+    # source_paths has test_runner.py but not tests/runner.py → must reject
+    with pytest.raises(EvidenceError, match="missing required files"):
+        guard.capture(policy, repo, new_commit, REMOTE, root / "capture")
+
+
+def test_dot_slash_runner_normalised(bounded_fixture):
+    """Command uses ./test_runner.py — the leading './' must be stripped
+    and the normalised path matched against source_paths."""
+    repo, commit, policy, root = bounded_fixture
+    # Command uses ./test_runner.py
+    policy["command"] = [sys.executable, "./test_runner.py", "{output}", "pass"]
+    # source_paths declares "test_runner.py" (normalised) → must pass
+    policy["source_paths"] = ["test_runner.py", "input.txt", "fixture.lock", "merge_policy.json"]
+    result = guard.capture(policy, repo, commit, REMOTE, root / "capture")
+    assert Path(result["receipt"]).is_file()
+    receipt = root / "capture/receipt/run.json"
+    check_result = guard.check(policy, repo, commit, REMOTE, receipt, root / "verified")
+    assert check_result["approved"] is True
+
+
+def test_policy_identity_mismatch_rejected(bounded_fixture):
+    """When the policy is changed between capture and check, the receipt must
+    be rejected even though the guard code is identical. The policy_sha256
+    recorded in the receipt differs from the current check policy."""
+    repo, commit, policy, root = bounded_fixture
+    policy["command"][-1] = "pass"
+    # Capture normally
+    result = guard.capture(policy, repo, commit, REMOTE, root / "capture")
+    receipt_path = root / "capture/receipt/run.json"
+    original_policy_sha = guard._policy_sha(policy)
+    # Simulate policy change: weaken the floor
+    policy["minimum_executed"] = 1
+    new_policy_sha = guard._policy_sha(policy)
+    assert original_policy_sha != new_policy_sha
+    # Guard code is unchanged, but policy SHA differs → reject
+    with pytest.raises(EvidenceError, match="Policy identity mismatch"):
+        guard.check(policy, repo, commit, REMOTE, receipt_path, root / "verified")
+
+
+def test_receipt_records_policy_sha(bounded_fixture):
+    """A receipt produced by guard.capture carries the policy SHA in
+    environment.tools['ch_merge_policy'] separate from the guard SHA."""
+    repo, commit, policy, root = bounded_fixture
+    policy["command"][-1] = "pass"
+    result = guard.capture(policy, repo, commit, REMOTE, root / "capture")
+    receipt_path = root / "capture/receipt/run.json"
+    receipt_data = json.loads(receipt_path.read_text())
+    tools = receipt_data["environment"]["tools"]
+    # Both identities present and distinct
+    guard_sha = tools["ch_merge_guard"]
+    policy_sha = tools["ch_merge_policy"]
+    assert guard_sha is not None
+    assert policy_sha is not None
+    assert len(guard_sha) == 64
+    assert len(policy_sha) == 64
+    assert guard_sha != policy_sha
+    assert policy_sha == guard._policy_sha(policy)
