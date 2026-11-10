@@ -449,11 +449,18 @@ class WarrantAnalyzer:
         # Resolve datasets early — needed for all checks below
         train_ds = self.storage.get_dataset(training_id)
         test_ds = self.storage.get_dataset(test_id) if test_id else None
+        train_errors: list[str] = []
+        test_errors: list[str] = []
+        train_ko_ids, train_roots = self._trace_upstream(
+            start_dataset=train_ds, lineage_errors=train_errors,
+        )
+        test_ko_ids, test_roots = self._trace_upstream(
+            start_dataset=test_ds, lineage_errors=test_errors,
+        )
 
         # --- 0. Circularity checks (CALIBRATED_TO_CONCLUSION) ---
         # Training dataset traces back to the conclusion.
         if train_ds:
-            train_ko_ids = self._dataset_lineage_ko_ids(train_ds)
             if conclusion_ko_id in train_ko_ids:
                 return AntiPatternDiagnosis(
                     pattern=AntiPattern.CALIBRATED_TO_CONCLUSION,
@@ -469,7 +476,6 @@ class WarrantAnalyzer:
 
         # Test dataset traces back to the conclusion — equally circular.
         if test_ds:
-            test_ko_ids = self._dataset_lineage_ko_ids(test_ds)
             if conclusion_ko_id in test_ko_ids:
                 return AntiPatternDiagnosis(
                     pattern=AntiPattern.CALIBRATED_TO_CONCLUSION,
@@ -514,21 +520,20 @@ class WarrantAnalyzer:
                 resolution_hint="Register the training dataset.",
             )
 
-        # --- 2. Train/test provenance root overlap (CALIBRATED_TO_CONCLUSION) ---
-        train_roots = self._trace_dataset_roots(train_ds)
-        test_roots = self._trace_dataset_roots(test_ds)
-
-        # Untraceable lineage: can't establish independence
-        if not train_roots or not test_roots:
+        # A known branch cannot establish independence for unresolved branches.
+        if train_errors or test_errors or not train_roots or not test_roots:
             missing = [
                 name for name, roots in (("training", train_roots), ("test", test_roots))
                 if not roots
             ]
+            failures = ([f"training: {error}" for error in train_errors]
+                        + [f"test: {error}" for error in test_errors])
+            failures.extend(f"{name}: no provenance roots" for name in missing)
             return AntiPatternDiagnosis(
                 pattern=AntiPattern.MISSING_INDEPENDENT_VALIDATION,
                 offending_ko_ids=[ko.id],
                 violated_condition=(
-                    f"Dataset lineage is untraceable for: {', '.join(missing)}. "
+                    f"Dataset lineage is incomplete: {'; '.join(failures)}. "
                     f"Independence of the train/test split cannot be established."
                 ),
                 resolution_hint=(
@@ -537,6 +542,7 @@ class WarrantAnalyzer:
                 ),
             )
 
+        # --- 2. Train/test provenance root overlap (CALIBRATED_TO_CONCLUSION) ---
         shared = train_roots & test_roots
         if shared:
             return AntiPatternDiagnosis(
@@ -887,6 +893,7 @@ class WarrantAnalyzer:
 
     def _trace_upstream(
         self, *, start_ko_id: str | None = None, start_dataset: 'Dataset | None' = None,
+        lineage_errors: list[str] | None = None,
     ) -> tuple[set[str], set[str]]:
         """Unified upstream traversal over KOs and datasets.
 
@@ -901,6 +908,10 @@ class WarrantAnalyzer:
 
         Uses shared ``visited`` sets for KOs and datasets to prevent
         infinite loops on cyclic graphs.
+
+        Optional ``lineage_errors`` records incomplete lineage: root comparison
+        alone cannot distinguish a complete graph from a valid branch alongside
+        an unresolved branch.
         """
         visited_ko: set[str] = set()
         visited_ds: set[str] = set()
@@ -925,6 +936,8 @@ class WarrantAnalyzer:
 
                 ko = self.storage.get_ko(ko_id)
                 if ko is None:
+                    if lineage_errors is not None:
+                        lineage_errors.append(f"source KO {ko_id!r} not found")
                     # Missing KO is a leaf — add id as fallback root
                     roots.add(ko_id)
                     continue
@@ -943,9 +956,11 @@ class WarrantAnalyzer:
                                      ko.derivation.test_dataset_id):
                         if ds_field:
                             ds = self.storage.get_dataset(ds_field)
-                            if ds and (ds.source_ko_id or ds.derived_from_dataset_ids):
+                            if ds and (lineage_errors is not None or ds.source_ko_id or ds.derived_from_dataset_ids):
                                 has_upstream = True
                                 ds_queue.append(ds)
+                            elif ds is None and lineage_errors is not None:
+                                lineage_errors.append(f"dataset {ds_field!r} not found")
 
                 # Follow DERIVED_FROM / TRANSFERRED_FROM relations
                 for rel in ko.relations:
@@ -958,8 +973,13 @@ class WarrantAnalyzer:
                 # Leaf KO: collect provenance root
                 if not has_upstream:
                     if ko.provenance and ko.provenance.source:
-                        roots.add(_normalise_provenance_source(ko.provenance.source))
+                        source = _normalise_provenance_source(ko.provenance.source)
+                        if not source and lineage_errors is not None:
+                            lineage_errors.append(f"source KO {ko_id!r} has a blank source label")
+                        roots.add(source)
                     else:
+                        if lineage_errors is not None:
+                            lineage_errors.append(f"source KO {ko_id!r} has no source label")
                         roots.add(ko_id)
 
             # ── Process datasets ───────────────────────────────────
@@ -969,6 +989,10 @@ class WarrantAnalyzer:
                     continue
                 visited_ds.add(ds.id)
 
+                if not ds.source_ko_id and not ds.derived_from_dataset_ids:
+                    if lineage_errors is not None:
+                        lineage_errors.append(f"dataset {ds.id!r} has no lineage")
+
                 if ds.source_ko_id and ds.source_ko_id not in visited_ko:
                     ko_queue.append(ds.source_ko_id)
 
@@ -977,6 +1001,8 @@ class WarrantAnalyzer:
                         parent_ds = self.storage.get_dataset(parent_id)
                         if parent_ds:
                             ds_queue.append(parent_ds)
+                        elif lineage_errors is not None:
+                            lineage_errors.append(f"parent dataset {parent_id!r} not found")
 
         return visited_ko, roots
 
@@ -1027,17 +1053,10 @@ class WarrantAnalyzer:
 
         # Fitted parameters: must have independent test dataset
         if ko.derivation and ko.derivation.derivation_type == DerivationType.FITTED:
-            test_id = ko.derivation.test_dataset_id
-            if test_id:
-                test_ds = self.storage.get_dataset(test_id)
-                if test_ds:
-                    train_id = ko.derivation.training_dataset_id
-                    train_ds = self.storage.get_dataset(train_id)
-                    if train_ds:
-                        train_roots = self._trace_dataset_roots(train_ds)
-                        test_roots = self._trace_dataset_roots(test_ds)
-                        return train_roots != test_roots and not (train_roots & test_roots)
-            return False
+            # Classification and diagnosis must agree: an invalid fit must
+            # not appear in independent_kos even if warrant is already blocked.
+            conclusion_id = path[0] if path else ko.id
+            return self._check_calibrated_to_conclusion(ko, conclusion_id, path) is None
 
         # Transferred: must have domain mapping
         if ko.derivation and ko.derivation.derivation_type == DerivationType.TRANSFERRED:
