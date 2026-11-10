@@ -90,7 +90,7 @@ def test_calibrated(storage, bench):
     log.info("\n== CALIBRATED_TO_CONCLUSION ==")
     analyzer = WarrantAnalyzer(storage)
 
-    # POS: fitted parameter with NO test dataset
+    # POS: fitted parameter with NO test dataset → MISSING_INDEPENDENT_VALIDATION
     ko = mk_ko("cal-pos", "Gain coefficient", TruthCategory.FITTED_PARAMETER,
         derivation=DerivationRelation(
             derivation_type=DerivationType.FITTED,
@@ -103,7 +103,7 @@ def test_calibrated(storage, bench):
     storage.create_ko(mk_ko("obs-cal-source", "Calibration source",
                              TruthCategory.PHYSICAL_OBSERVATION, source="lab-1"))
     diagnoses = analyzer.detect_all_anti_patterns()
-    got = any(d.pattern == AntiPattern.CALIBRATED_TO_CONCLUSION
+    got = any(d.pattern == AntiPattern.MISSING_INDEPENDENT_VALIDATION
               and "cal-pos" in d.offending_ko_ids for d in diagnoses)
     bench.record("cal_POS", True, got, "Fitted with no test dataset")
 
