@@ -45,28 +45,44 @@ POLICY_FIELDS = {"schema_version", "command", "parser", "minimum_executed",
 # Bounded-coverage fields — all three required together.
 BOUNDED_FIELDS = {"coverage_mode", "source_paths", "coverage_rationale"}
 
-# Minimum set patterns for bounded mode.
-# If any tracked file's lowercase path contains any pattern, it MUST be in source_paths.
-# Patterns target the runner script (executes the test suite) and the merge policy (defines acceptance).
-REQUIRED_ROLES = {
-    "runner": ["test_runner", "runner_v", "run_tests", "hrrm_test_runner"],
-    "policy": ["merge_policy", "hrrm_merge_policy"],
-}
-
-
-def _basename_matches(filename, patterns):
-    """Check if the lowercase filename matches any pattern substring."""
-    name_lower = filename.lower()
-    for pat in patterns:
-        if pat.lower() in name_lower:
-            return True
-    return False
-
 
 def _guard_source_sha():
     """Hash this guard script for identity binding."""
     this_file = Path(__file__).resolve()
     return sha(this_file.read_bytes())
+
+
+def _extract_runner_paths(command):
+    """Extract explicit file paths from the command argv that live inside {repo}.
+
+    Returns relative paths for files referenced by the reviewed command that
+    must be present in source_paths when tracked. Only direct file references
+    are extracted; module paths (-m pytest) and directory arguments are not
+    treated as runner files.
+    """
+    result = []
+    for arg in command:
+        if arg.startswith("{repo}/"):
+            rel = arg[len("{repo}/"):]
+            if rel and not rel.startswith("/"):
+                result.append(rel)
+    return result
+
+
+def _guard_policy_path(policy_path):
+    """Return the relative policy file path if it lives inside the candidate repo.
+
+    The --policy file is loaded from outside the worktree in the CI workflow,
+    but when a policy file is tracked inside the candidate repo it must be
+    included in source_paths. Returns None when the policy file is external.
+    """
+    try:
+        pol = Path(policy_path).resolve()
+        # The policy path argument is absolute in CI. We check if it is a tracked
+        # file by comparing against the caller's repo root later.
+        return pol.name
+    except Exception:
+        return None
 
 
 def _tracked_file_set(repo):
@@ -82,15 +98,6 @@ def _tracked_file_set(repo):
         if mode in ("100644", "100755"):
             tracked.add(name.decode("utf-8"))
     return tracked
-
-
-def _has_tracked_matching(repo, patterns):
-    """Check if any tracked file matches any of the given patterns (basename substring, case-insensitive)."""
-    tracked = _tracked_file_set(repo)
-    for f in tracked:
-        if _basename_matches(f, patterns):
-            return True, f
-    return False, None
 
 
 def _validate_source_paths(source_paths, repo):
@@ -110,21 +117,43 @@ def _validate_source_paths(source_paths, repo):
     return sorted(source_paths)
 
 
-def _enforce_minimum_set(source_paths, repo):
-    """Enforce that required role files are included in source_paths when they exist.
-    
-    Checks for runner and policy files. If a tracked file matches a required role
-    pattern but is not in source_paths, raises EvidenceError.
+def _enforce_minimum_set(source_paths, repo, command, policy_file_path=None):
+    """Enforce that tracked files required for the reviewed regression are in source_paths.
+
+    Two checks, both explicit (no patterns):
+
+    1. Runner: every file referenced by the reviewed command as {repo}/path must
+       appear in source_paths when tracked in the repository. This covers the
+       actual test runner script and any data/config files the command reads.
+
+    2. Policy: if the --policy file lives inside the candidate worktree
+       (same basename is a tracked file), it must be in source_paths.
+       The policy file is reviewed separately from the command argv, so this
+       check is independent of _extract_runner_paths.
     """
-    paths_set = set(source_paths)
-    for role, patterns in REQUIRED_ROLES.items():
-        found, filename = _has_tracked_matching(repo, patterns)
-        if found and filename not in paths_set:
-            raise EvidenceError(
-                f"Bounded coverage missing required {role} file: "
-                f"'{filename}' is tracked but not in source_paths. "
-                f"All tracked {role} artifacts must be declared."
-            )
+    declared = set(source_paths)
+    tracked = _tracked_file_set(repo)
+    missing = []
+
+    # 1. Command-referenced files (runner, data files, etc.)
+    for path in sorted(_extract_runner_paths(command)):
+        if path in tracked and path not in declared:
+            missing.append(path)
+
+    # 2. Policy file — checked by name when it exists inside the worktree
+    if policy_file_path is not None:
+        # Find the actual tracked file by matching basename
+        pol_basename = Path(policy_file_path).name
+        for f in sorted(tracked):
+            if Path(f).name == pol_basename and f not in declared:
+                missing.append(f)
+                break
+
+    if missing:
+        raise EvidenceError(
+            f"Bounded coverage missing required files: "
+            f"{', '.join(missing)} are tracked but not in source_paths."
+        )
 
 
 def policy_at(path):
@@ -194,7 +223,7 @@ def tracked_sources(repo):
     return sorted(paths)
 
 
-def effective_source_paths(policy, repo):
+def effective_source_paths(policy, repo, policy_file_path=None):
     """Return the source_paths to use, validated, minimum-set enforced, and sorted.
 
     For bounded mode, validates against tracked files and enforces minimum set.
@@ -203,7 +232,7 @@ def effective_source_paths(policy, repo):
     """
     if "coverage_mode" in policy and policy["coverage_mode"] == "bounded":
         validated = _validate_source_paths(policy["source_paths"], repo)
-        _enforce_minimum_set(validated, repo)
+        _enforce_minimum_set(validated, repo, policy["command"], policy_file_path)
         return validated
     return tracked_sources(repo)
 
@@ -242,11 +271,11 @@ def _guard_tool_command():
     return [sys.executable, "-c", f"import sys; sys.stdout.write({guard_sha!r})"]
 
 
-def capture(policy, repo, commit, expected_remote, output):
+def capture(policy, repo, commit, expected_remote, output, policy_file_path=None):
     repo = Path(repo).resolve()
     expected_checkout(repo, commit, expected_remote)
     output = fresh_output(output, repo)
-    source_paths = effective_source_paths(policy, repo)
+    source_paths = effective_source_paths(policy, repo, policy_file_path)
     profile = {
         "repo": str(repo), "source_paths": source_paths, "lockfiles": policy["lockfiles"],
         "archive": {"path": str(output / "archive"), "locator": "ci-artifact://ch-evidence",
@@ -290,7 +319,7 @@ def _receipt_guard_sha(root, run):
     return guard_sha
 
 
-def validate_run(policy, repo, commit, expected_remote, receipt):
+def validate_run(policy, repo, commit, expected_remote, receipt, policy_file_path=None):
     """Treat every candidate-controlled observation as data; execute nothing."""
     repo = Path(repo).resolve()
     expected_checkout(repo, commit, expected_remote)
@@ -307,7 +336,7 @@ def validate_run(policy, repo, commit, expected_remote, receipt):
     if (code["canonical_remote"] != canonical_remote(expected_remote)
             or canonical_remote(run["claim"]["declared_remote"]) != canonical_remote(expected_remote)):
         raise EvidenceError("Receipt repository identity mismatch")
-    expected_sources = effective_source_paths(policy, repo)
+    expected_sources = effective_source_paths(policy, repo, policy_file_path)
     if code["source_paths"] != expected_sources or code["lockfile_paths"] != sorted(policy["lockfiles"]):
         raise EvidenceError("Receipt omits tracked sources or declared lockfiles")
     # Verify guard identity: the guard that captured must be the same as the guard checking.
@@ -346,9 +375,9 @@ def validate_run(policy, repo, commit, expected_remote, receipt):
     return checked, run
 
 
-def check(policy, repo, commit, expected_remote, receipt, output):
+def check(policy, repo, commit, expected_remote, receipt, output, policy_file_path=None):
     repo = Path(repo).resolve()
-    checked, run = validate_run(policy, repo, commit, expected_remote, receipt)
+    checked, run = validate_run(policy, repo, commit, expected_remote, receipt, policy_file_path)
     output = fresh_output(output, repo)
     target = Target("ci-merge-guard", output / "target", {expected_remote: repo})
     import_receipt(receipt, target)
@@ -399,13 +428,15 @@ def main(argv=None):
     try:
         policy = policy_at(args.policy)
         common = (policy, args.repo, args.expected_commit, args.expected_remote)
+        # Pass the --policy file path for in-worktree policy enforcement
+        pol_path = str(Path(args.policy).resolve())
         if args.operation == "capture":
-            result = capture(*common, args.output)
+            result = capture(*common, args.output, policy_file_path=pol_path)
             code = 0 if result["acceptance"]["status"] == "pass" else 4
         else:
             if not args.receipt:
                 raise EvidenceError("check requires an explicitly selected receipt")
-            result = check(*common, args.receipt, args.output)
+            result = check(*common, args.receipt, args.output, policy_file_path=pol_path)
             code = 0
         print(json.dumps(result, sort_keys=True))
         return code

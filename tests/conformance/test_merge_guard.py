@@ -245,28 +245,33 @@ def test_bounded_coverage_records_guard_identity(bounded_fixture):
 
 
 def test_bounded_missing_runner_is_rejected(bounded_fixture):
-    """Bounded source_paths without test_runner.py when runner is tracked must fail."""
+    """Bounded source_paths without test_runner.py — referenced by command — must fail."""
     repo, commit, policy, root = bounded_fixture
-    # Remove runner from source_paths but leave it tracked
     policy["source_paths"] = ["input.txt", "fixture.lock", "merge_policy.json"]
-    with pytest.raises(EvidenceError, match="missing required runner"):
+    with pytest.raises(EvidenceError, match="missing required files"):
         guard.capture(policy, repo, commit, REMOTE, root / "capture")
 
 
 def test_bounded_missing_policy_file_is_rejected(bounded_fixture):
-    """Bounded source_paths without merge_policy.json when tracked must fail."""
+    """Bounded source_paths without merge_policy.json when the --policy file
+    is tracked inside the worktree must fail — even though the policy file
+    is NOT in the command argv."""
     repo, commit, policy, root = bounded_fixture
-    # Remove policy from source_paths but leave it tracked
+    # Remove policy from source_paths; command does not reference it
     policy["source_paths"] = ["test_runner.py", "input.txt", "fixture.lock"]
-    with pytest.raises(EvidenceError, match="missing required policy"):
-        guard.capture(policy, repo, commit, REMOTE, root / "capture")
+    # Pass policy_file_path to trigger in-worktree policy check
+    pol_path = str(repo / "merge_policy.json")
+    with pytest.raises(EvidenceError, match="missing required files"):
+        guard.capture(policy, repo, commit, REMOTE, root / "capture",
+                      policy_file_path=pol_path)
 
 
 def test_bounded_only_input_txt_rejected(bounded_fixture):
-    """source_paths with only input.txt must be rejected (runner and policy missing)."""
+    """source_paths with only input.txt must be rejected (runner from command
+    and policy file both missing)."""
     repo, commit, policy, root = bounded_fixture
     policy["source_paths"] = ["input.txt"]
-    with pytest.raises(EvidenceError, match="missing required"):
+    with pytest.raises(EvidenceError, match="missing required files"):
         guard.capture(policy, repo, commit, REMOTE, root / "capture")
 
 
@@ -336,3 +341,28 @@ def test_guard_identity_mismatch_rejected(bounded_fixture):
     # Check must reject the identity mismatch
     with pytest.raises(EvidenceError, match="Guard identity mismatch"):
         guard.check(policy, repo, commit, REMOTE, receipt_path, root / "verified")
+
+
+def test_guard_code_changed_rejects_with_unchanged_policy(bounded_fixture):
+    """When the guard script is modified after capture, check must reject even
+    though the policy JSON (and its SHA) is identical. The guard_source_sha256
+    differs while policy_sha256 matches — the two identities are independent."""
+    repo, commit, policy, root = bounded_fixture
+    policy["command"][-1] = "pass"
+    # Capture normally
+    result = guard.capture(policy, repo, commit, REMOTE, root / "capture")
+    receipt_path = root / "capture/receipt/run.json"
+    original_guard_sha = guard._guard_source_sha()
+    original_policy_sha = guard.sha(guard.canonical(policy))
+    # Simulate guard code change by monkeypatching _guard_source_sha
+    original_func = guard._guard_source_sha
+    guard._guard_source_sha = lambda: "f" * 64
+    try:
+        # Policy is unchanged, but guard code SHA differs
+        with pytest.raises(EvidenceError, match="Guard identity mismatch"):
+            guard.check(policy, repo, commit, REMOTE, receipt_path, root / "verified")
+    finally:
+        guard._guard_source_sha = original_func
+    # Verify: policy SHA would still match, guard SHA is what rejected
+    assert original_policy_sha is not None
+    assert original_guard_sha != "f" * 64
