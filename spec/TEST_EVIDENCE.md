@@ -249,7 +249,12 @@ positive timeout and bounded scope. Unknown keys/versions are rejected.
 
 The adapter requires the externally expected full commit and canonical repository,
 clean matching pre/post states and receipt source coverage for every tracked
-regular file (recursive submodule pins separately). Verification reparses results,
+regular file by default (recursive submodule pins separately). A reviewed policy
+may explicitly select bounded coverage using all three fields `coverage_mode:
+bounded`, `source_paths`, and a nonblank `coverage_rationale`. The selected tracked
+regular-file set must include command-referenced files and the actual policy file
+when it is tracked inside the candidate worktree. Coverage MUST NOT be silently
+reduced. Verification reparses results,
 rejects absent/failed/unknown execution, checks the reviewed policy and never
 executes candidate receipt commands. A required test MUST NOT be satisfied by a
 skipped testcase. A counts-json runner cannot claim per-test skip exceptions.
@@ -262,3 +267,31 @@ See `docs/merge-guard.md` for job credential isolation, bootstrap, required-chec
 settings, reviewer independence, artifact expiry and unsupported fork/merge-queue
 scope. Source integrity does not authenticate observations. This adapter cannot
 prove that GitHub branch protection has been enabled or that a producer is honest.
+
+### Operational resource boundary (HA)
+
+The merge adapter MAY enforce reviewed execution budgets independently of the
+domain acceptance policy. Budget exhaustion MUST reject, never produce approval
+or convert full coverage into bounded coverage. The reference adapter defaults
+to 10,000 selected sources, a 16 MiB `run.json`, and a 900-second supervised CLI
+worker lifetime. An optional `resource_limits` policy mapping can override these
+values; invalid/unknown limits reject. Policy binding covers explicit overrides;
+separate source identities bind the guard script and operational runtime.
+
+Incoming receipt size MUST be checked before parsing; declared source count MUST
+be checked before expensive verification. Source-count rejection at capture MUST
+precede test execution and source hashing. A preflight response is read-only and
+MUST NOT claim approval. Existing outputs MUST NOT be deleted or overwritten.
+Progress diagnostics MUST be separate from the machine-readable final response.
+
+The reference POSIX CLI supervises the complete worker operation and terminates
+its process group on deadline or interruption. It MUST suppress any buffered
+worker approval after incomplete execution, return nonzero, and preserve partial
+artifacts without promoting them to finalized evidence. Cleanup/scheduling latency
+is not part of a real-time guarantee. Unsupported supervision hosts reject.
+Direct Python API users supply their own wall-time supervision. Test-command
+timeouts alone do not satisfy the complete CLI operation deadline.
+
+These are execution/availability controls, not new warrant or implementation-gate
+semantics. They do not establish functional safety, independent certification,
+automatic H2 adoption or bounded memory usage for every artifact.

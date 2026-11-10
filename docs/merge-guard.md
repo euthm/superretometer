@@ -15,7 +15,8 @@ It does not certify that software is bug-free or authorize a deployment.
    without persisted Git credentials, secrets, shared caches or write permission.
    It runs the reviewed argv and uses #18 to retain stdout, stderr, structured
    results and pre/post code observations. All tracked regular files are covered,
-   including tests, runner, policy and configuration. Submodules use #18 pins;
+   by default, including tests, runner, policy and configuration. An explicitly
+   reviewed bounded policy can select a smaller acceptance scope. Submodules use #18 pins;
    symlink sources are explicitly unsupported.
 4. A fresh verifier job installs only the reviewed evaluator. Candidate code and
    downloaded receipts are **data**, never installed or executed in that job.
@@ -110,7 +111,7 @@ An empty report or a zero command exit with no observed tests cannot pass.
 
 Observation reuses one NUL-delimited Git index snapshot for tracked membership;
 Git process count does not grow with the source count. Every declared file is
-still hashed and the merge adapter still covers all tracked regular files. This
+still hashed; full coverage selects all tracked regular files. This
 removes subprocess fan-out, not filesystem/hash/JSON costs; benchmark actual
 large repositories before claiming throughput. A timeout or missing receipt is
 BLOCKED evidence, not permission to substitute a manual passing count.
@@ -126,6 +127,89 @@ A sparse/smaller checkout does not automatically redefine the tested source set.
 Do not remove tracked files, weaken coverage, or reuse old receipts to force a
 pass. A deliberately narrower acceptance scope needs a separately reviewed
 contract and policy.
+
+## HA / resource preflight
+
+The merge adapter applies operational budgets before hashing a large selected
+source set or parsing an oversized incoming receipt. It does **not** narrow
+coverage, waive tests, cache away freshness observations, or change gate/warrant
+semantics to meet a budget. Full coverage remains the default. A budget rejection
+requires a reviewed policy decision, not a manual passing count.
+
+Default limits (operational choices, not measured performance guarantees):
+
+| Field | Default | Boundary |
+|---|---:|---|
+| `max_source_files` | 10,000 | Selected sources, and sources declared in an incoming receipt |
+| `max_receipt_bytes` | 16,777,216 | `run.json` bytes before check parses it; finalized receipt size after record |
+| `operation_timeout_seconds` | 900 | CLI worker lifetime: startup, preflight, record/verify, controls and export |
+
+Policies may explicitly override any of these keys in an optional
+`resource_limits` mapping. Unknown keys, booleans, zero/negative/nonfinite values,
+and fractional file/byte counts reject. Raising a limit is a reviewed resource
+decision and does not imply bounded coverage. Limits are enforced independently
+by the verifier and policy changes invalidate the capture policy binding.
+
+```json
+"resource_limits": {
+  "max_source_files": 10000,
+  "max_receipt_bytes": 16777216,
+  "operation_timeout_seconds": 900
+}
+```
+
+Before expensive work, inspect scope without running tests or producing approval:
+
+```sh
+python /reviewed/ch/scripts/ch_merge_guard.py capture \
+  --policy /reviewed/policy.json --repo /candidate \
+  --expected-commit "$TEST_SHA" --expected-remote "$REPOSITORY_URL" \
+  --output /new/capture --preflight
+```
+
+Successful preflight exits 0 with `status: preflight`, **`approved: false`**,
+repository/commit, coverage mode, selected source count and effective limits.
+Check preflight additionally reports receipt bytes and declared source count.
+It does not establish passing tests, byte integrity or gate acceptance, and
+creates no output directory. Existing output paths reject before expensive
+verification; use a new path rather than deleting audit evidence.
+
+Full/bounded source selection, runner and in-worktree policy minimum sets retain
+their existing requirements. Bounded policies require all three fields:
+`coverage_mode: bounded`, `source_paths`, and a nonblank `coverage_rationale`.
+The script, operational runtime and policy have separate identities recorded in
+receipt tool observations and compared during check. A metadata hash is not
+producer authentication.
+
+CLI diagnostics are NDJSON on **stderr** (`ch-progress`): preflight, record,
+receipt verification, import, each named control, export and final verification.
+Five-second supervision heartbeats identify an active worker; they are not
+claims of progress or proof that the worker is healthy. **stdout remains one
+final JSON document**, so existing machine readers can keep parsing it.
+
+The POSIX CLI supervises an isolated process group. On deadline, Ctrl-C or SIGTERM it
+kills the worker group and returns nonzero with `approved: false`; buffered
+worker output cannot publish premature approval. Partial artifacts are retained
+without being promoted to finalized evidence. Process reap/OS scheduling can add
+cleanup latency. Unsupported hosts reject rather than silently omit supervision.
+Direct Python `capture`/`check` API calls enforce count/size limits but require
+their caller to supervise wall time. Other #18 CLI commands are unchanged.
+The existing `timeout_seconds` still bounds the test command, not the complete
+adapter operation. An outer CI job deadline should allow worker cleanup.
+
+This is not a complete memory/CPU/network quota: source selection still examines
+the Git index, Git/worktree/submodule checks remain, and receipt byte limits do
+not limit every log or exported artifact. Container/runner quotas remain external.
+
+### Learning case: oversized full coverage
+
+The operator reported a full capture of 570,510 files with a 243.06 MB receipt
+for ten application tests. Bounded re-capture selected seven reviewed paths;
+the project's own audit bundle binds the exact candidate and ten executed tests.
+The operator measured approximately 10 s capture and 8 s check; these timings
+were not independently reproduced by this change. This is an operational lesson
+and regression fixture, not a claimed automatic H2 run or a new application approval.
+Historical application evidence and its pinned guard revision remain unchanged.
 
 ## Trust boundary and H2
 
