@@ -76,7 +76,7 @@ All notable changes to cognitive-harness (Superretometer).
 - Runtime server excluded from wheel (`transports/` not in `pyproject.toml`
   `include`). PyPI distribution contains only `cognitive_harness`.
 - Install commands in README, index.html, and release notes unified to
-  `pip install git+https://github.com/euthm/superretometer@v0.8.0`.
+  `pip install cognitive-harness`.
 - `scripts/sync_site_metadata.py` now checks install line consistency across
   README, index.html, and current release notes.
 
