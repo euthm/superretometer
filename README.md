@@ -169,7 +169,7 @@ When a knowledge object is superseded by a revised version:
 ## Quick start
 
 ```bash
-pip install cognitive-harness
+pip install git+https://github.com/euthm/superretometer@v0.8.0
 ```
 
 Zero dependencies. MCP server and CLI are included in the base package.

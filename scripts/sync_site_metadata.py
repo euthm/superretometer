@@ -2,6 +2,8 @@
 
 Run after changing pyproject.toml; CI uses --check without modifying files.
 Only marked blocks are generated. Historical release notes remain unchanged.
+Also checks that the install command agrees across README, index.html and
+the current release notes.  CI fails when the three sources differ.
 """
 from __future__ import annotations
 
@@ -12,6 +14,9 @@ import re
 ROOT = Path(__file__).resolve().parents[1]
 START = "<!-- BEGIN generated:package-metadata -->"
 END = "<!-- END generated:package-metadata -->"
+INSTALL_PATTERN = re.compile(
+    r"pip install [^\s<`']+superretometer[@\w.-]*", re.IGNORECASE
+)
 
 
 def package_version(root: Path) -> str:
@@ -71,18 +76,53 @@ def synchronize(root: Path, *, check: bool = False) -> list[str]:
     return changed
 
 
+def check_install_consistency(root: Path) -> list[str]:
+    """Return list of files with inconsistent install commands."""
+    version = package_version(root)
+    expected = f"pip install git+https://github.com/euthm/superretometer@v{version}"
+    targets = ["README.md", "docs/index.html"]
+    release = f"docs/releases/v{version}.md"
+    if (root / release).is_file():
+        targets.append(release)
+    drift = []
+    for name in targets:
+        path = root / name
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        matches = INSTALL_PATTERN.findall(text)
+        if not matches:
+            # No install command — not a drift issue
+            continue
+        for m in matches:
+            # Normalize whitespace for comparison
+            norm_m = " ".join(m.split())
+            norm_exp = " ".join(expected.split())
+            if norm_m != norm_exp:
+                drift.append(f"{name}: found '{m}', expected '{expected}'")
+    return drift
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Fail on drift; do not write")
     args = parser.parse_args()
     try:
         changed = synchronize(ROOT, check=args.check)
+        install_drift = check_install_consistency(ROOT)
     except ValueError as error:
         parser.exit(1, f"{error}\n")
+    errors = []
     if args.check and changed:
-        parser.exit(1, "Stale package metadata: " + ", ".join(changed)
-                    + ". Run python scripts/sync_site_metadata.py\n")
-    print("Package metadata: " + (", ".join(changed) if changed else "in sync"))
+        errors.append("Stale package metadata: " + ", ".join(changed)
+                       + ". Run python scripts/sync_site_metadata.py")
+    if install_drift:
+        errors.append("Install command drift: " + "; ".join(install_drift))
+    if errors:
+        parser.exit(1, "; ".join(errors) + "\n")
+    meta_msg = ", ".join(changed) if changed else "in sync"
+    install_msg = "; ".join(install_drift) if install_drift else "in sync"
+    print(f"Package metadata: {meta_msg} | install commands: {install_msg}")
     return 0
 
 

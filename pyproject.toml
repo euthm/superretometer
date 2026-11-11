@@ -35,7 +35,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["cognitive_harness*", "transports*"]
+include = ["cognitive_harness*"]
 
 [tool.setuptools.package-data]
 "cognitive_harness.evidence" = ["schemas/*.json"]

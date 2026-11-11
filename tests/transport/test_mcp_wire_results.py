@@ -103,7 +103,7 @@ def runtime(monkeypatch):
     engine = OrchestrationEngine(storage, RuleEngineReasoner(storage))
     components = {'storage': storage, 'consumer_api': ConsumerAPI(storage, engine),
                   'implementation_policy': ImplementationGatePolicy(storage),
-                  'canonical_version': '0.7.0',
+                   'canonical_version': '0.8.0',
                   'env': {'workspace': 'test-fixture', 'project_id': 'test-project',
                           'session_id': 'test-session', 'mode': 'test'}}
     return module.RuntimeServer(components)
@@ -124,7 +124,7 @@ def runtime_call(runtime, monkeypatch, name, arguments=None):
 
 def test_runtime_handshake_and_tools_list_are_not_tool_results(runtime, monkeypatch):
     hello = runtime_request(runtime, monkeypatch, 'initialize')['result']
-    assert hello['serverInfo']['version'] == '0.7.0'
+    assert hello['serverInfo']['version'] == '0.8.0'
     assert 'content' not in hello
     tools = runtime_request(runtime, monkeypatch, 'tools/list')['result']
     assert any(t['name'] == 'check_implementation_gates' for t in tools['tools'])

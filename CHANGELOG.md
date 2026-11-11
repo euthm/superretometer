@@ -2,6 +2,17 @@
 
 All notable changes to cognitive-harness (Superretometer).
 
+## [Unreleased]
+
+### Added
+- Missing validation semantics: fitted parameters with incomplete lineage are
+  consistently rejected across all callers, with spec-level documentation of
+  the bypass conditions.
+
+### Fixed
+- Incomplete fitted lineage is rejected consistently in the warrant analyzer,
+  not only in specific code paths.
+
 ## [0.8.0] — 2026-11-10
 
 ### Added
@@ -14,6 +25,26 @@ All notable changes to cognitive-harness (Superretometer).
   whitespace runs are canonicalised before root comparison.
 - Evidence validation: `PHYSICAL_OBSERVATION` KOs with dangling `evidence_ids`
   are no longer treated as independently grounded.
+- HA controls for merge evidence: read-only scope preflight, reviewed source/
+  receipt limits, POSIX process-group operation deadlines, phase/heartbeat
+  diagnostics on stderr, and early rejection of existing output paths. Resource
+  exhaustion never narrows coverage or produces approval; gate/warrant semantics
+  and historical receipts remain unchanged.
+- Fail-closed CI merge adapter: reviewed regression policy, complete
+  tracked-file coverage, exact commit/repository binding, seven gates, isolated
+  negative controls and verified bundle export.
+- Manual checkpoint handover: versioned integrity-checked checkpoints,
+  project/source validation, budgeted context rendering and explicit
+  `checkpoint create/list/restore/inject` CLI commands.
+- Portable test-evidence workflow: optional evidence SDK/CLI for explicit
+  argv capture, schema/byte verification, proposal-backed portable target import,
+  existing gate/warrant evaluation and checksummed third-party bundle export.
+- Typed receipts, capture profiles and append-only evaluation/bundle contracts;
+  path/length/file hashes supplement the unchanged legacy blob digest.
+- Public eight-assertion fixture with separate-process replay, isolated commit/
+  validator controls, no private services, and failure/tampering conformance tests.
+- Explicit retention/locators, configured redaction, scoped snapshots and POSIX
+  target locks.
 
 ### Fixed
 - CALIBRATED_TO_CONCLUSION now fires only for actual circularity (training or
@@ -23,45 +54,13 @@ All notable changes to cognitive-harness (Superretometer).
 - Dataset cycles: shared visited sets prevent `RecursionError` on cyclic
   `derived_from_dataset_ids`.
 - Sourceless dataset no longer suppresses leaf KO root collection.
+- Evidence observation reuses its captured Git index for exact source/lockfile
+  membership instead of launching a Git subprocess per file.
+- Checkpoint subprocess hash test now reloads the same stored checkpoint in a
+  fresh process.
 
 ### Changed
 - CALIBRATED_TO_CONCLUSION for "no test dataset" is now MISSING_INDEPENDENT_VALIDATION.
-
-## [Unreleased]
-
-### Added
-- HA controls for merge evidence: read-only scope preflight, reviewed source/
-  receipt limits, POSIX process-group operation deadlines, phase/heartbeat
-  diagnostics on stderr, and early rejection of existing output paths. Resource
-  exhaustion never narrows coverage or produces approval; gate/warrant semantics
-  and historical receipts remain unchanged.
-- Fail-closed CI merge adapter around #18: reviewed regression policy, complete
-  tracked-file coverage, exact commit/repository binding, seven gates, isolated
-  negative controls and verified bundle export. A default-branch workflow keeps
-  candidate execution separate from the check-publishing credential; required
-  status/reviewer settings remain an explicit administrator activation step.
-- Manual checkpoint handover (#19): versioned integrity-checked checkpoints,
-  project/source validation, budgeted context rendering and explicit
-  `checkpoint create/list/restore/inject` CLI commands. Automatic OpenCode/MCP
-  hooks remain outside the implemented scope; token counts default to estimates.
-- Portable test-evidence workflow (#18): optional evidence SDK/CLI for explicit
-  argv capture, schema/byte verification, proposal-backed portable target import,
-  existing gate/warrant evaluation and checksummed third-party bundle export.
-- Typed receipts, capture profiles and append-only evaluation/bundle contracts;
-  path/length/file hashes supplement the unchanged legacy blob digest.
-- Public eight-assertion fixture with separate-process replay, isolated commit/
-  validator controls, no private services, and failure/tampering conformance tests.
-- Explicit retention/locators, configured redaction, scoped snapshots and POSIX
-  target locks. Unsupported private backends fail rather than imply integration.
-
-### Fixed
-- Evidence observation reuses its captured Git index for exact source/lockfile
-  membership instead of launching a Git subprocess per file. Full source hashes,
-  status and index/diff fingerprints remain; untracked/ignored files still fail.
-  Literal pathspec characters cannot masquerade as tracked paths.
-- Checkpoint subprocess hash test now reloads the same stored checkpoint in a
-  fresh process; separate creations have timestamps and cannot require equal hashes.
-  Use the current interpreter for subprocess tests and retain timestamp tamper coverage.
 
 ### Clarified
 - Implementation policy has seven gates; PASS is dimension-specific and is not
@@ -76,7 +75,23 @@ All notable changes to cognitive-harness (Superretometer).
   replacing the previous local EPF workflow.
 - Clarify the boundary between external strategy/planning, Superretometer evidence
   evaluation, and job execution; retain historical `epf_ready_id` compatibility.
-- Update website and agent instructions without adding a runtime integration.
+
+## [0.7.1] — 2026-11-07
+
+### Added
+- Contradiction detection in warrant analysis: `contradicting_kos` in WarrantResult,
+  UNWARRANTED when contradicting evidence exists.
+- `CONTRADICTION_INBOUND` relation set for counter-evidence traversal.
+- `ko_truth_category` and `evidence_relation_type` parsed in `submit_proposal`.
+- `evidence_relation_type` parameter in `add_evidence` MCP tool.
+- Soft-delete via `delete_ko` (Memory API, clears mappings).
+
+### Fixed
+- InMemoryStorage passes `truth_category` in CREATE_KO execution.
+- Memory adapter persistence: `lookup_by_key` limit 10→200, `Response.__bool__` fix,
+  `_resolve_ch_id` fallback for CH-ID → Memory UUID resolution.
+- MCP tool replies encoded as visible `CallToolResult` content.
+- Lookup objects filtered from KO listing.
 
 ## [0.7.0] — 2026-09-06 (Candidate)
 
