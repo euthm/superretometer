@@ -4,18 +4,12 @@ All notable changes to cognitive-harness (Superretometer).
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-11-11
+
 ### Added
 - Missing validation semantics: fitted parameters with incomplete lineage are
   consistently rejected across all callers, with spec-level documentation of
   the bypass conditions.
-
-### Fixed
-- Incomplete fitted lineage is rejected consistently in the warrant analyzer,
-  not only in specific code paths.
-
-## [0.8.0] — 2026-11-10
-
-### Added
 - `MISSING_INDEPENDENT_VALIDATION` anti-pattern: fitted parameters without an
   independent test dataset, with unregistered datasets, or with untraceable
   lineage are blocked with the correct diagnosis, distinct from circularity.
@@ -75,6 +69,16 @@ All notable changes to cognitive-harness (Superretometer).
   replacing the previous local EPF workflow.
 - Clarify the boundary between external strategy/planning, Superretometer evidence
   evaluation, and job execution; retain historical `epf_ready_id` compatibility.
+
+### Runtime
+- Runtime server version guard: allowlist replaced with MIN_CANONICAL floor
+  check (>= 0.8.0). A stale older package on PYTHONPATH no longer satisfies it.
+- Runtime server excluded from wheel (`transports/` not in `pyproject.toml`
+  `include`). PyPI distribution contains only `cognitive_harness`.
+- Install commands in README, index.html, and release notes unified to
+  `pip install git+https://github.com/euthm/superretometer@v0.8.0`.
+- `scripts/sync_site_metadata.py` now checks install line consistency across
+  README, index.html, and current release notes.
 
 ## [0.7.1] — 2026-11-07
 
