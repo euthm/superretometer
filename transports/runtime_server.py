@@ -3,8 +3,8 @@
 """Superretometer runtime server — MCP transport over stdin/stdout.
 
 Connects:
-  OpenCode -> Superretometer MCP -> canonical cognitive_harness v0.6.3
-           -> MemoryAdapter -> persistent Memory graph
+  OpenCode -> Superretometer MCP -> canonical cognitive_harness >= 0.8.0
+            -> MemoryAdapter -> persistent Memory graph
 
 All epistemisk logikk i canonical package.
 stdout = MCP protocol messages only.
@@ -109,13 +109,16 @@ def startup() -> dict:
     validate_tool_schemas()
     env = validate_env()
 
-    # Pin canonical version — fail closed if wrong version loaded
+    # Pin canonical version floor — reject anything below minimum
     from importlib.metadata import version as pkg_version
     canonical_version = pkg_version("cognitive-harness")
-    if canonical_version not in ("0.6.4", "0.7.0", "0.7.1"):
+    _v = tuple(int(x) for x in canonical_version.split(".")[:3])
+    MIN_CANONICAL = (0, 8, 0)
+    if _v < MIN_CANONICAL:
         raise RuntimeError(
             f"Refusing to start: cognitive-harness {canonical_version} loaded, "
-            f"expected 0.6.4, 0.7.0, or 0.7.1. Check PYTHONPATH / installed packages for stale versions."
+            f"minimum {'.'.join(str(x) for x in MIN_CANONICAL)}. "
+            f"Check PYTHONPATH / installed packages for stale versions."
         )
 
     # Log to stderr — never stdout
