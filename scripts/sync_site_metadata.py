@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 START = "<!-- BEGIN generated:package-metadata -->"
 END = "<!-- END generated:package-metadata -->"
 INSTALL_PATTERN = re.compile(
-    r"pip install [^\s<`']+superretometer[@\w.-]*", re.IGNORECASE
+    r"pip install [^\s<`']+", re.IGNORECASE
 )
 
 
@@ -79,7 +79,7 @@ def synchronize(root: Path, *, check: bool = False) -> list[str]:
 def check_install_consistency(root: Path) -> list[str]:
     """Return list of files with inconsistent install commands."""
     version = package_version(root)
-    expected = f"pip install git+https://github.com/euthm/superretometer@v{version}"
+    expected = "pip install cognitive-harness"
     targets = ["README.md", "docs/index.html"]
     release = f"docs/releases/v{version}.md"
     if (root / release).is_file():
