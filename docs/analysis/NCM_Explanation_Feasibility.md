@@ -58,8 +58,8 @@ The template-based approach (`explanation/templates.py`) produces:
 
 | Criterion | Deterministic Template | NCM |
 |-----------|----------------------|-----|
-| Factual fidelity | 100% — every statement traces to input field | Unknown — LLM may invent facts |
-| Unsupported claims | Impossible — no generation, only formatting | Likely — LLM fills gaps |
+| Factual fidelity | Guaranteed within tested scenarios (5 cases, 12 tests) — every statement traces to input field | Unknown — LLM may invent facts |
+| Unsupported claims | Impossible within tested scenarios — no generation, only formatting | Likely — LLM fills gaps |
 | Missing evidence | Explicitly reported as "0 item(s)" | May be glossed over |
 | Reproducibility | Guaranteed — pure function of input | Stochastic across runs |
 | Latency | <1ms | Seconds per explanation (GPU) |
