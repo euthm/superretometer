@@ -29,8 +29,9 @@ from build_graphs import (
     compute_and_export,
 )
 from template import render_template
-from ncm_explain import generate_ncm_summary
+from ncm_explain import generate_ncm_summary, render_prompt
 from compare import score_output
+import os
 
 
 def save(path: Path, data):
@@ -47,6 +48,8 @@ def main():
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    ncm_checkpoint = os.environ.get("NCM_CHECKPOINT_DIR", "")
+    ncm_source = os.environ.get("NCM_SOURCE_DIR", "")
 
     cases = {}
     all_results = {}
@@ -63,7 +66,7 @@ def main():
         baseline_text = render_template(record)
 
         # NCM explanation (may be skipped)
-        ncm_result = generate_ncm_summary(record)
+        ncm_result = generate_ncm_summary(record, ncm_checkpoint, ncm_source)
 
         # Score baseline
         baseline_score = score_output(baseline_text, record, "baseline")

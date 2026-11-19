@@ -1,27 +1,19 @@
 # FILE: examples/ncm_explanations/ncm_explain.py
-"""NCM explanation generation.
+"""NCM explanation generation via ncm_run.py.
 
 Attempts to use the HazyResearch NCM XSum checkpoint to generate a summary
 of a warrant record. Falls back gracefully if weights are not available.
-
-NCM is a coarse-to-fine text generation model. We use it to produce a
-concise summary of the warrant record's structured data. The summary is
-advisory only — the verified verdict, evidence roots, and warrant result
-remain the authority.
 
 Following issue #32: pin the upstream revision and checkpoint. Keep PyTorch
 and the weights local to this optional example.
 """
 from __future__ import annotations
-import json
 import os
 import sys
 from pathlib import Path
 
 # Pinned upstream revision (from issue #32)
 NCM_GITHUB_REV = "main"  # HazyResearch/ncm as of Oct 2026
-NCM_CHECKPOINT_DIR = os.environ.get("NCM_CHECKPOINT_DIR", "")
-NCM_SOURCE_DIR = os.environ.get("NCM_SOURCE_DIR", "")
 
 
 def render_prompt(record: dict) -> str:
@@ -65,94 +57,81 @@ def render_prompt(record: dict) -> str:
         for a in record["conditional_assumptions"]:
             parts.append(f"Gap: {a}.")
 
-    return " ".join(parts)
+    return "\n".join(parts)
 
 
-def generate_ncm_summary(record: dict) -> dict:
-    """Try to generate an NCM summary of the warrant record.
+def generate_ncm_summary(record: dict, checkpoint_dir: str, source_dir: str) -> dict:
+    """Generate an NCM summary using ncm_run.py.
 
-    Returns a dict with:
-      - status: "generated", "skipped", or "error"
-      - summary: the generated text (if status == "generated")
-      - reason: explanation of skip/error
-      - model_revision: pinned upstream revision
-      - checkpoint_dir: path used
+    Returns a dict with status, summary, error, model_revision, checkpoint_dir.
     """
     result = {
         "status": "skipped",
         "summary": "",
         "reason": "",
         "model_revision": NCM_GITHUB_REV,
-        "checkpoint_dir": NCM_CHECKPOINT_DIR,
+        "checkpoint_dir": checkpoint_dir,
     }
 
     # Check prerequisites
-    if not NCM_CHECKPOINT_DIR or not Path(NCM_CHECKPOINT_DIR).exists():
-        result["reason"] = (
-            f"NCM checkpoint directory not found: {NCM_CHECKPOINT_DIR or '(not set)'}. "
-            f"Set NCM_CHECKPOINT_DIR to a directory containing tokenizer.pt, generator.pt, and config.yaml. "
-            f"Download with: hf download hazyresearch/ncm-checkpoints --local-dir <dir>"
-        )
+    if not checkpoint_dir or not Path(checkpoint_dir).exists():
+        result["reason"] = f"NCM checkpoint directory not found: {checkpoint_dir or '(not set)'}"
         return result
 
-    if not NCM_SOURCE_DIR or not Path(NCM_SOURCE_DIR).exists():
-        result["reason"] = (
-            f"NCM source directory not found: {NCM_SOURCE_DIR or '(not set)'}. "
-            f"Set NCM_SOURCE_DIR to a clone of https://github.com/HazyResearch/ncm. "
-            f"Install with: pip install -r requirements.txt"
-        )
+    if not source_dir or not Path(source_dir).exists():
+        result["reason"] = f"NCM source directory not found: {source_dir or '(not set)'}"
         return result
 
-    # Add NCM source to path
-    sys.path.insert(0, NCM_SOURCE_DIR)
+    # Use ncm_run.py as subprocess to isolate GPU/NCM imports
+    import json
+    import subprocess
+    import tempfile
 
-    try:
-        import torch
-        from omegaconf import OmegaConf
-        from models.generator import Generator
-        from tokenization.vq_tokenizer import VQTokenizer
-    except ImportError as e:
+    here = Path(__file__).resolve().parent
+    ncm_run = here / "ncm_run.py"
+    if not ncm_run.exists():
         result["status"] = "error"
-        result["reason"] = f"Failed to import NCM modules: {e}. Install: pip install -r {NCM_SOURCE_DIR}/requirements.txt"
+        result["reason"] = f"ncm_run.py not found at {ncm_run}"
         return result
 
-    checkpoint_path = Path(NCM_CHECKPOINT_DIR)
+    prompt = render_prompt(record)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as fin:
+        json.dump([prompt], fin)
+        input_path = fin.name
+    output_path = input_path + ".out"
+
     try:
-        # Load tokenizer
-        tokenizer_path = checkpoint_path / "tokenizer.pt"
-        if not tokenizer_path.exists():
-            result["reason"] = f"tokenizer.pt not found in {checkpoint_path}"
-            return result
-        tokenizer = VQTokenizer.load(tokenizer_path)
-
-        # Load generator
-        generator_path = checkpoint_path / "generator.pt"
-        config_path = checkpoint_path / "config.yaml"
-        if not generator_path.exists() or not config_path.exists():
-            result["reason"] = f"generator.pt or config.yaml not found in {checkpoint_path}"
-            return result
-
-        config = OmegaConf.load(config_path)
-        generator = Generator(OmegaConf.to_container(config, resolve=True))
-        generator.load_state_dict(torch.load(generator_path, map_location="cpu", weights_only=True))
-        generator.eval()
-
-        # Prepare input
-        prompt = render_prompt(record)
-        # Tokenize the prompt
-        tokenized = tokenizer.encode(prompt)
-
-        # Generate
-        with torch.no_grad():
-            # NCM generates coarse-to-fine in parallel levels
-            generated_codes = generator.generate(tokenized.unsqueeze(0))
-            summary = tokenizer.decode(generated_codes.squeeze(0))
-
-        result["status"] = "generated"
-        result["summary"] = summary.strip()
-
+        env = os.environ.copy()
+        proc = subprocess.run(
+            [sys.executable, str(ncm_run),
+             "--checkpoint-dir", checkpoint_dir,
+             "--source-dir", source_dir,
+             "--input-file", input_path,
+             "--output-file", output_path],
+            capture_output=True, text=True, timeout=120, env=env,
+        )
+        if proc.returncode == 0 and Path(output_path).exists():
+            out = json.load(open(output_path))
+            if out and out[0].get("status") == "generated":
+                result["status"] = "generated"
+                result["summary"] = out[0]["summary"]
+            else:
+                result["status"] = out[0].get("status", "error")
+                result["reason"] = out[0].get("error", "Unknown NCM error")
+        else:
+            result["status"] = "error"
+            result["reason"] = proc.stderr.strip() or proc.stdout.strip() or "ncm_run.py failed"
+    except subprocess.TimeoutExpired:
+        result["status"] = "error"
+        result["reason"] = "NCM generation timed out (120s)"
     except Exception as e:
         result["status"] = "error"
-        result["reason"] = f"NCM generation failed: {e}"
+        result["reason"] = str(e)
+    finally:
+        for p in (input_path, output_path):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
 
     return result
