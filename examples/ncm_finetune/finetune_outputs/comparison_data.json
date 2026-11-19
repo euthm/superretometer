@@ -1,0 +1,303 @@
+[
+  {
+    "epoch": 0,
+    "phase": "baseline",
+    "samples": [
+      {
+        "fixture_idx": 0,
+        "label": "established",
+        "original_target": "established: Directly matches the assessment's first sentence: 'this submission proves that a relativistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four-dimensional Wilson lattice gauge theory for any simple compact gauge group.'",
+        "vqvae_roundtrip": ":: Directly matches the assessment's first sentence: 'this submission proves that a focivistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four-dimensional Wilson lattice gauge theory for",
+        "ncm_baseline": "A conclusion to the submission of the government objections for the Isle of Wight bottoms in the Isle of Wight have been submitted submitted for the Wightman axioms."
+      },
+      {
+        "fixture_idx": 1,
+        "label": "not_established",
+        "original_target": "not_established: Assessment explicitly states: 'It does not prove that the infinite-volume limit is unique.' The claim goes beyond what the source establishes.",
+        "vqvae_roundtrip": "not_ Passage",
+        "ncm_baseline": "The International submission of International Macro and Building field (PPFC) has concluded that the axed plant can be constructed Wed of Wightmanman-Mmanoms."
+      },
+      {
+        "fixture_idx": 2,
+        "label": "not_established",
+        "original_target": "not_established: Assessment explicitly states: 'It does not prove ... that there is a mass gap.' Mass gap remains an open question per this source.",
+        "vqvae_roundtrip": "not_'\": explicitly explicitly states: 'It does not prove ... that there is a mass gap,' Mass gap remains an open question per this source.",
+        "ncm_baseline": "The Edinburgh Institute of Technology has produced a outline submission to the the Wightmanman Heights - a grey greyhound in Yang-hhye-h-hhoms."
+      },
+      {
+        "fixture_idx": 3,
+        "label": "established",
+        "original_target": "established: SU(2) is a simple compact gauge group. The assessment covers 'any simple compact gauge group', which includes SU(2). The claim is within scope.",
+        "vqvae_roundtrip": "established: SU22) is a simple consoles gauge group. The assessment covers 'any a liquids gauge group', which includes SU-2). The claim is within detail..",
+        "ncm_baseline": "The submission for Invernessvernvernessess W Wnellnellinell on the Isle of Man the slowing a limit."
+      },
+      {
+        "fixture_idx": 4,
+        "label": "beyond_scope",
+        "original_target": "beyond_scope: The assessment addresses construction of one QFT, not uniqueness among all possible QFTs. The source says nothing about uniqueness of the theory itself, only about the infinite-volume limit.",
+        "vqvae_roundtrip": "beyond_:: The assessment addresses of of one QFT, not half among all possible QREs.",
+        "ncm_baseline": "The US Department of Justice (SSSA) has settled its written conclusion for the Isle triangle W's Wightman axioms."
+      },
+      {
+        "fixture_idx": 5,
+        "label": "established",
+        "original_target": "established: Source states 9.6% discrepancy, which is 'approximately 10%'. 0.551 > 0.497 confirms vault-side exceeds io value.",
+        "vqvae_roundtrip": "established:12 states 9.6% discrepancy, which is 'approximately 10%'. 0",
+        "ncm_baseline": "The British Institute of British Medical, Exeter, has revealed that it reveals a personal secrets - the equivalent of its vault-side loss."
+      },
+      {
+        "fixture_idx": 6,
+        "label": "not_established",
+        "original_target": "not_established: Source explicitly states the discrepancy is 9.6%, 'not the 3% residual tolerance used elsewhere.' The claim contradicts the source.",
+        "vqvae_roundtrip": "not- Passage",
+        "ncm_baseline": "Exeterhibmine has revealed calculated that a vault and silver--side statistics statistics reveals - how much it it averaged calculated."
+      }
+    ]
+  },
+  {
+    "epoch": 0,
+    "loss": 5.885751485824585,
+    "samples": [
+      {
+        "fixture_idx": 0,
+        "label": "established",
+        "ncm_generated": "\"Gradotin Anthropational\" gauge theory theory is a simple theory that a theory is a theory that there is a automatic gauge aspect."
+      },
+      {
+        "fixture_idx": 1,
+        "label": "not_established",
+        "ncm_generated": "The peanut gauge theory that proves the gauge theory is simple simple that"
+      },
+      {
+        "fixture_idx": 2,
+        "label": "not_established",
+        "ncm_generated": "The maize gauge argued proves proves a gauge theory is supporting the annual gap that identifying gauge."
+      },
+      {
+        "fixture_idx": 3,
+        "label": "established",
+        "ncm_generated": "Couldhire gauge theory that generating a gauge theory is roughly calculated? the"
+      },
+      {
+        "fixture_idx": 4,
+        "label": "beyond_scope",
+        "ncm_generated": "The poetichire theory theoryhire the theory that is a gauge gauge that"
+      },
+      {
+        "fixture_idx": 5,
+        "label": "established",
+        "ncm_generated": "The notion that argued that vault-bound Moscow is roughly roughly half the size of weight size - calculated calculated."
+      },
+      {
+        "fixture_idx": 6,
+        "label": "not_established",
+        "ncm_generated": "New research suggests that the vault declines that 0 is 0. 0 or 0.800800 - the same measure that reducesbased residual particles\n."
+      }
+    ]
+  },
+  {
+    "epoch": 10,
+    "loss": 1.733425259590149,
+    "samples": [
+      {
+        "fixture_idx": 0,
+        "label": "established",
+        "ncm_generated": "not12ly: matches the assessment's only the case that a\nThe covers 'myivistic quantum submission proves that the Wighti axioms can be constructed only only the pan-volume average."
+      },
+      {
+        "fixture_idx": 1,
+        "label": "not_established",
+        "ncm_generated": "not 1600 agendas: explicitly explicitly states: 'It does not prove that"
+      },
+      {
+        "fixture_idx": 2,
+        "label": "not_established",
+        "ncm_generated": "not_ agendas: explicitly explicitly agreed: 'It does not convince everyone that there is a brief gap,'\n gap remains an open question per this."
+      },
+      {
+        "fixture_idx": 3,
+        "label": "established",
+        "ncm_generated": "not established ( \" Glass explicitly states: 'which does not.. that covers 'will compact predictable gauge group', which includes:22). The claim is within detail."
+      },
+      {
+        "fixture_idx": 4,
+        "label": "beyond_scope",
+        "ncm_generated": " well-be:nel matches matches: 'It does not prove The that covers 'any and pragmatic verbal submission proves that the Wighti axiek."
+      },
+      {
+        "fixture_idx": 5,
+        "label": "established",
+        "ncm_generated": "We: \" Terror is 96% discrepancy, which is is is 'real 10%\" or 0.5% confirms 46-down the principles."
+      },
+      {
+        "fixture_idx": 6,
+        "label": "not_established",
+        "ncm_generated": "We: \" \" is 486% discrepancy, which"
+      }
+    ]
+  },
+  {
+    "epoch": 20,
+    "loss": 0.8995207846164703,
+    "samples": [
+      {
+        "fixture_idx": 0,
+        "label": "established",
+        "ncm_generated": " established: Directly matches the assessment's first sentence: 'this submission proves \" a adequivistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four-- Wilson lattice gauge theory for"
+      },
+      {
+        "fixture_idx": 1,
+        "label": "not_established",
+        "ncm_generated": "not_ Passage: explicitly explicitly states: 'It does not prove prove the yawn-volume limit is.'. The claim beyond beyond what the source establishes."
+      },
+      {
+        "fixture_idx": 2,
+        "label": "not_established",
+        "ncm_generated": "not_ agendas: explicitly explicitly states: 'It does not prove ... that there is a mass gap.' Mass"
+      },
+      {
+        "fixture_idx": 3,
+        "label": "established",
+        "ncm_generated": "established: SU2)) is a simple consoles gauge group. The total covers 'my a relatively gauge group', which includes: (2). The claim is within detail.."
+      },
+      {
+        "fixture_idx": 4,
+        "label": "beyond_scope",
+        "ncm_generated": " established: Directly matches the assessment's first sentence: 'this submission \" source nothing about something of a field theory satisfying the Wighti axi axiines, only about the Split-volume limit."
+      },
+      {
+        "fixture_idx": 5,
+        "label": "established",
+        "ncm_generated": "establish:12 states 9.6% discrepancy, which is 'approximately 10%'."
+      },
+      {
+        "fixture_idx": 6,
+        "label": "not_established",
+        "ncm_generated": "not- Passage \" explicitly: the states states, which the difference is 'not"
+      }
+    ]
+  },
+  {
+    "epoch": 30,
+    "loss": 0.6781235337257385,
+    "samples": [
+      {
+        "fixture_idx": 0,
+        "label": "established",
+        "ncm_generated": " established: Directly matches the assessment's first sentence: 'this submission proves \" a adequivistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four.- Wilson lattice gauge theory for"
+      },
+      {
+        "fixture_idx": 1,
+        "label": "not_established",
+        "ncm_generated": "not_ Passage: explicitly explicitly states states 'It does not prove that the commercially-volume limit is historic'. The claim beyond beyond what the source establishes."
+      },
+      {
+        "fixture_idx": 2,
+        "label": "not_established",
+        "ncm_generated": "not_ agendas: explicitly explicitly states states 'It does not prove ... that there is a mass gap.' Mass).\" remains an open question per this source"
+      },
+      {
+        "fixture_idx": 3,
+        "label": "established",
+        "ncm_generated": "established: SU2) they is a610 consoles gauge group. The in covers 'my a ' gauge group the which includes\u00a322). The claim is within detail."
+      },
+      {
+        "fixture_idx": 4,
+        "label": "beyond_scope",
+        "ncm_generated": " established: Directly matches the assessment's first sentence: 'This is not half among among possible QPRs. The source, nothing of uniqueness of the theory itself, only about the Suddenly-volume limit."
+      },
+      {
+        "fixture_idx": 5,
+        "label": "established",
+        "ncm_generated": "establish:12 states 9.6% discrepancy, which is 'approximately 10%'."
+      },
+      {
+        "fixture_idx": 6,
+        "label": "not_established",
+        "ncm_generated": "not-established \": explicitly: the discrepancy is 9.6%, 'not.."
+      }
+    ]
+  },
+  {
+    "epoch": 40,
+    "loss": 0.6230615377426147,
+    "samples": [
+      {
+        "fixture_idx": 0,
+        "label": "established",
+        "ncm_generated": " established: Directly matches the assessment's first sentence: 'this submission proves \" a adequivistic quantum field theory satisfying behalf Wightman axioms can be constructed as a scaling limit of four-- Wilson lattice gauge theory for"
+      },
+      {
+        "fixture_idx": 1,
+        "label": "not_established",
+        "ncm_generated": "not_ Passage: explicitly explicitly states states 'It does not prove that the yawn-volume limit is historic'. The claim goes beyond what the source establishes."
+      },
+      {
+        "fixture_idx": 2,
+        "label": "not_established",
+        "ncm_generated": "not_ agendas: explicitly explicitly states states 'It does not prove ... that there is a mass gap,' Mass"
+      },
+      {
+        "fixture_idx": 3,
+        "label": "established",
+        "ncm_generated": "established: SU2)) is a610 consoles gauge group. The in covers 'my a ' gauge group the which includes\u00a322). The claim is within detail."
+      },
+      {
+        "fixture_idx": 4,
+        "label": "beyond_scope",
+        "ncm_generated": "beyondcladyond: The of addresses of of one Qww, not half among among possible QREs. The source, nothing of uniqueness of the theory itself, only about the Split-volume limit."
+      },
+      {
+        "fixture_idx": 5,
+        "label": "established",
+        "ncm_generated": "establish:12 states 9.6% discrepancy, which is 'approximately 10%'.\"."
+      },
+      {
+        "fixture_idx": 6,
+        "label": "not_established",
+        "ncm_generated": "not-established \": explicitly: the discrepancy is 9.6%, 'not"
+      }
+    ]
+  },
+  {
+    "epoch": 49,
+    "loss": 0.6074187159538269,
+    "samples": [
+      {
+        "fixture_idx": 0,
+        "label": "established",
+        "ncm_generated": " established: Directly matches the assessment's first sentence: 'this submission proves \" a adequivistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four-- Wilson lattice gauge theory for"
+      },
+      {
+        "fixture_idx": 1,
+        "label": "not_established",
+        "ncm_generated": "not_ Passage: explicitly explicitly states states 'It does not prove that the yawn-volume limit is historic'. The claim goes beyond what the source establishes."
+      },
+      {
+        "fixture_idx": 2,
+        "label": "not_established",
+        "ncm_generated": "not_ agendas: explicitly explicitly states states 'It does not prove ... that there is a mass gap,' Mass"
+      },
+      {
+        "fixture_idx": 3,
+        "label": "established",
+        "ncm_generated": "established: SU2)) is a610 consoles gauge group. The total covers 'my a ' gauge group the which includes\u00a322). The claim is within detail."
+      },
+      {
+        "fixture_idx": 4,
+        "label": "beyond_scope",
+        "ncm_generated": "beyondcladyond: The of addresses of of one Qww, not half among among possible QREs. The source, nothing of uniqueness of the theory itself, only about the Split-volume limit."
+      },
+      {
+        "fixture_idx": 5,
+        "label": "established",
+        "ncm_generated": "establish:12 states 9.6% discrepancy, which is 'approximately 10%'.\"."
+      },
+      {
+        "fixture_idx": 6,
+        "label": "not_established",
+        "ncm_generated": "not-established \": explicitly: the discrepancy is 9.6%, 'not"
+      }
+    ]
+  }
+]

@@ -40,3 +40,4 @@ credentials.json
 service-account*.json
 *.pem
 *.key
+finetune_outputs/*.pt

@@ -1,0 +1,84 @@
+[
+  {
+    "source_url": "https://github.com/yang-mills-group/YM/blob/main/docs/assessment-1.pdf",
+    "source_revision": "2026-11-10",
+    "source_passage": "In our opinion, this submission proves that a relativistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four-dimensional Wilson lattice gauge theory for any simple compact gauge group. It does not prove that the infinite-volume limit is unique or that there is a mass gap.",
+    "source_license": "Apache-2.0",
+    "source_family": "yang-mills-committee",
+    "theorem_family": "YM-4D-existence",
+    "claim": "The October 2026 submission proves that a relativistic QFT satisfying the Wightman axioms can be constructed as a scaling limit of 4D Wilson lattice gauge theory for any simple compact gauge group.",
+    "label": "established",
+    "reference_rationale": "Directly matches the assessment's first sentence: 'this submission proves that a relativistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four-dimensional Wilson lattice gauge theory for any simple compact gauge group.'",
+    "reviewed_by": "Kvasir (AI1)"
+  },
+  {
+    "source_url": "https://github.com/yang-mills-group/YM/blob/main/docs/assessment-1.pdf",
+    "source_revision": "2026-11-10",
+    "source_passage": "In our opinion, this submission proves that a relativistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four-dimensional Wilson lattice gauge theory for any simple compact gauge group. It does not prove that the infinite-volume limit is unique or that there is a mass gap.",
+    "source_license": "Apache-2.0",
+    "source_family": "yang-mills-committee",
+    "theorem_family": "YM-4D-existence",
+    "claim": "The October 2026 submission proves that the infinite-volume limit is unique for the constructed Yang-Mills theory.",
+    "label": "not_established",
+    "reference_rationale": "Assessment explicitly states: 'It does not prove that the infinite-volume limit is unique.' The claim goes beyond what the source establishes.",
+    "reviewed_by": "Kvasir (AI1)"
+  },
+  {
+    "source_url": "https://github.com/yang-mills-group/YM/blob/main/docs/assessment-1.pdf",
+    "source_revision": "2026-11-10",
+    "source_passage": "In our opinion, this submission proves that a relativistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four-dimensional Wilson lattice gauge theory for any simple compact gauge group. It does not prove that the infinite-volume limit is unique or that there is a mass gap.",
+    "source_license": "Apache-2.0",
+    "source_family": "yang-mills-committee",
+    "theorem_family": "YM-4D-existence",
+    "claim": "The October 2026 submission proves the existence of a mass gap in the constructed Yang-Mills theory.",
+    "label": "not_established",
+    "reference_rationale": "Assessment explicitly states: 'It does not prove ... that there is a mass gap.' Mass gap remains an open question per this source.",
+    "reviewed_by": "Kvasir (AI1)"
+  },
+  {
+    "source_url": "https://github.com/yang-mills-group/YM/blob/main/docs/assessment-1.pdf",
+    "source_revision": "2026-11-10",
+    "source_passage": "In our opinion, this submission proves that a relativistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four-dimensional Wilson lattice gauge theory for any simple compact gauge group. It does not prove that the infinite-volume limit is unique or that there is a mass gap.",
+    "source_license": "Apache-2.0",
+    "source_family": "yang-mills-committee",
+    "theorem_family": "YM-4D-existence",
+    "claim": "The October 2026 submission establishes existence of a QFT for SU(2) lattice gauge theory via scaling limit construction.",
+    "label": "established",
+    "reference_rationale": "SU(2) is a simple compact gauge group. The assessment covers 'any simple compact gauge group', which includes SU(2). The claim is within scope.",
+    "reviewed_by": "Kvasir (AI1)"
+  },
+  {
+    "source_url": "https://github.com/yang-mills-group/YM/blob/main/docs/assessment-1.pdf",
+    "source_revision": "2026-11-10",
+    "source_passage": "In our opinion, this submission proves that a relativistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four-dimensional Wilson lattice gauge theory for any simple compact gauge group. It does not prove that the infinite-volume limit is unique or that there is a mass gap.",
+    "source_license": "Apache-2.0",
+    "source_family": "yang-mills-committee",
+    "theorem_family": "YM-4D-existence",
+    "claim": "The October 2026 submission proves that Yang-Mills theory is the unique QFT satisfying the Wightman axioms in 4D.",
+    "label": "beyond_scope",
+    "reference_rationale": "The assessment addresses construction of one QFT, not uniqueness among all possible QFTs. The source says nothing about uniqueness of the theory itself, only about the infinite-volume limit.",
+    "reviewed_by": "Kvasir (AI1)"
+  },
+  {
+    "source_url": "file:///home/egiuth/euthm/superretometer/cognitive_harness/examples/vault_loss_coefficients.md",
+    "source_revision": "2026-10-03",
+    "source_passage": "At 900 \u00b0C, the vault-side calculation gives 0.551 W/K, while io.vault_loss gives 0.497 W/K. The discrepancy is 9.6%, not the 3% residual tolerance used elsewhere.",
+    "source_license": "project-local",
+    "source_family": "io-vault-loss",
+    "claim": "At 900 \u00b0C, the vault-side loss coefficient exceeds the io.vault_loss value by approximately 10%.",
+    "label": "established",
+    "reference_rationale": "Source states 9.6% discrepancy, which is 'approximately 10%'. 0.551 > 0.497 confirms vault-side exceeds io value.",
+    "reviewed_by": "Kvasir (AI1)"
+  },
+  {
+    "source_url": "file:///home/egiuth/euthm/superretometer/cognitive_harness/examples/vault_loss_coefficients.md",
+    "source_revision": "2026-10-03",
+    "source_passage": "At 900 \u00b0C, the vault-side calculation gives 0.551 W/K, while io.vault_loss gives 0.497 W/K. The discrepancy is 9.6%, not the 3% residual tolerance used elsewhere.",
+    "source_license": "project-local",
+    "source_family": "io-vault-loss",
+    "claim": "At 900 \u00b0C, the vault-side and io.vault_loss calculations agree within the 3% residual tolerance.",
+    "label": "not_established",
+    "reference_rationale": "Source explicitly states the discrepancy is 9.6%, 'not the 3% residual tolerance used elsewhere.' The claim contradicts the source.",
+    "reviewed_by": "Kvasir (AI1)"
+  }
+]
