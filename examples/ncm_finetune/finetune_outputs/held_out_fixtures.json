@@ -1,0 +1,42 @@
+[
+  {
+    "source_url": "https://github.com/yang-mills-group/YM",
+    "source_passage": "In our opinion, this submission proves that a relativistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four-dimensional Wilson lattice gauge theory for any simple compact gauge group. It does not prove that the infinite-volume limit is unique or that there is a mass gap.",
+    "source_family": "yang-mills-committee",
+    "claim": "The October 2026 submission proves that Yang-Mills theory exists for SO(8) lattice gauge theory via scaling limit construction.",
+    "label": "established",
+    "reference_rationale": "SO(8) is a simple compact gauge group, covered by 'any simple compact gauge group' in the assessment."
+  },
+  {
+    "source_url": "https://github.com/yang-mills-group/YM",
+    "source_passage": "In our opinion, this submission proves that a relativistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four-dimensional Wilson lattice gauge theory for any simple compact gauge group. It does not prove that the infinite-volume limit is unique or that there is a mass gap.",
+    "source_family": "yang-mills-committee",
+    "claim": "The October 2026 submission proves the theory satisfies cluster factorization and asymptotic completeness.",
+    "label": "beyond_scope",
+    "reference_rationale": "The assessment mentions Wightman axioms generally but does not specifically address cluster factorization or asymptotic completeness as verified properties."
+  },
+  {
+    "source_url": "https://github.com/yang-mills-group/YM",
+    "source_passage": "In our opinion, this submission proves that a relativistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four-dimensional Wilson lattice gauge theory for any simple compact gauge group. It does not prove that the infinite-volume limit is unique or that there is a mass gap.",
+    "source_family": "yang-mills-committee",
+    "claim": "The October 2026 submission proves that no mass gap exists in the constructed Yang-Mills theory.",
+    "label": "not_established",
+    "reference_rationale": "The assessment says it does not prove there IS a mass gap \u2014 this is different from proving there is NO mass gap. Absence of proof is not proof of absence."
+  },
+  {
+    "source_url": "https://github.com/yang-mills-group/YM",
+    "source_passage": "In our opinion, this submission proves that a relativistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four-dimensional Wilson lattice gauge theory for any simple compact gauge group. It does not prove that the infinite-volume limit is unique or that there is a mass gap.",
+    "source_family": "yang-mills-committee",
+    "claim": "The October 2026 submission is applicable to U(1) electromagnetism.",
+    "label": "beyond_scope",
+    "reference_rationale": "U(1) is abelian, not a simple compact gauge group. The assessment specifically covers simple compact groups like SU(N), not abelian U(1)."
+  },
+  {
+    "source_url": "private",
+    "source_passage": "Simuleringsrapport V9 p.8: The numerical model reproduces measured yields with a mean deviation of 0.032 t/ha over 1344 data points. The deviation is within acceptable tolerances for the calibration period 2019\u20132023.",
+    "source_family": "nibio-yield",
+    "claim": "The numerical model reliably predicts crop yields outside the 2019\u20132023 calibration period.",
+    "label": "beyond_scope",
+    "reference_rationale": "The source only covers the calibration period 2019\u20132023. Extrapolation beyond this period is not supported by the evidence."
+  }
+]

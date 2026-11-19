@@ -1,0 +1,41 @@
+{
+  "model": "kvasir_baseline",
+  "evaluations": [
+    {
+      "fixture_idx": 0,
+      "gt_label": "established",
+      "kvasir_label": "established",
+      "kvasir_rationale": "SO(8) is a simple compact Lie group, explicitly covered by the assessment scope.",
+      "correct": true
+    },
+    {
+      "fixture_idx": 1,
+      "gt_label": "beyond_scope",
+      "kvasir_label": "beyond_scope",
+      "kvasir_rationale": "Wightman axioms mention cluster property as requirement but assessment does not verify it for this construction.",
+      "correct": true
+    },
+    {
+      "fixture_idx": 2,
+      "gt_label": "not_established",
+      "kvasir_label": "not_established",
+      "kvasir_rationale": "Source says it does not prove there IS a mass gap, which is not the same as proving no mass gap exists.",
+      "correct": true
+    },
+    {
+      "fixture_idx": 3,
+      "gt_label": "beyond_scope",
+      "kvasir_label": "beyond_scope",
+      "kvasir_rationale": "U(1) is abelian, not a simple compact group. Assessment specifically says simple compact gauge groups.",
+      "correct": true
+    },
+    {
+      "fixture_idx": 4,
+      "gt_label": "beyond_scope",
+      "kvasir_label": "beyond_scope",
+      "kvasir_rationale": "Source covers calibration period 2019-2023 only. Extrapolation beyond this period is not supported.",
+      "correct": true
+    }
+  ],
+  "accuracy": "5/5"
+}

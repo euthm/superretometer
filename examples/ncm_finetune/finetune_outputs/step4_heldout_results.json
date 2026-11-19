@@ -1,0 +1,149 @@
+{
+  "summary": {
+    "total_fixtures": 5,
+    "label_accuracy": {
+      "frozen": "0/5",
+      "finetuned": "1/5"
+    },
+    "unsupported_claims_accepted": {
+      "frozen": 0,
+      "finetuned": 0
+    },
+    "missing_preme_identified": {
+      "frozen": 0,
+      "finetuned": 3
+    },
+    "invented_assumptions": {
+      "frozen": 1,
+      "finetuned": 2
+    }
+  },
+  "per_fixture": [
+    {
+      "fixture_idx": 0,
+      "gt_label": "established",
+      "frozen": {
+        "text": "The International Council of Competition and Markets Authority (PRAS) has concluded that the Isle of Wight bridge could be built on the WightmanStra.",
+        "label": "unknown",
+        "label_matched": false,
+        "missing_preme_found": false,
+        "preme_signals": [],
+        "invented_assumption": false,
+        "invented_reasons": []
+      },
+      "finetuned": {
+        "text": "not_ agendas: explicitly explicitly states: 'It does not prove that that covers 'any a ' gauge group', which includes:22). The claim is within detail.",
+        "label": "not_established",
+        "label_matched": false,
+        "missing_preme_found": true,
+        "preme_signals": [
+          "does not prove"
+        ],
+        "invented_assumption": true,
+        "invented_reasons": [
+          "number '22' not in source"
+        ]
+      }
+    },
+    {
+      "fixture_idx": 1,
+      "gt_label": "beyond_scope",
+      "frozen": {
+        "text": "The International Council of Exeteriatrics has submitted a submission conclusion that the \"lastlesman axioms should be installed on Isle of Wightight.",
+        "label": "unknown",
+        "label_matched": false,
+        "missing_preme_found": false,
+        "preme_signals": [],
+        "invented_assumption": false,
+        "invented_reasons": []
+      },
+      "finetuned": {
+        "text": "not_ Passage: explicitly explicitly states states 'It does not that that thews-volume limit is historic'. The claim goes beyond what the source establishes.",
+        "label": "not_established",
+        "label_matched": false,
+        "missing_preme_found": true,
+        "preme_signals": [
+          "beyond"
+        ],
+        "invented_assumption": false,
+        "invented_reasons": []
+      }
+    },
+    {
+      "fixture_idx": 2,
+      "gt_label": "not_established",
+      "frozen": {
+        "text": "The British College of British Surveyors has submitted a submission submission that the Isle of Wight axedoms can be constructed Yang-hhoms.",
+        "label": "unknown",
+        "label_matched": false,
+        "missing_preme_found": false,
+        "preme_signals": [],
+        "invented_assumption": false,
+        "invented_reasons": []
+      },
+      "finetuned": {
+        "text": "not_ agendas: explicitly explicitly states states 'It does not prove ... that there is a mass gap,' Mass",
+        "label": "not_established",
+        "label_matched": false,
+        "missing_preme_found": true,
+        "preme_signals": [
+          "does not prove",
+          "mass gap"
+        ],
+        "invented_assumption": false,
+        "invented_reasons": []
+      }
+    },
+    {
+      "fixture_idx": 3,
+      "gt_label": "beyond_scope",
+      "frozen": {
+        "text": "The British College of Technology Engineering has submitted its final submission to 350 120-cycl axman ax axioms on the Isle Isle Isle Wight.",
+        "label": "unknown",
+        "label_matched": false,
+        "missing_preme_found": false,
+        "preme_signals": [],
+        "invented_assumption": true,
+        "invented_reasons": [
+          "number '350' not in source",
+          "number '120' not in source"
+        ]
+      },
+      "finetuned": {
+        "text": "not_ Passage: explicitly explicitly states states 'It does not that that thews-volume limit is historic'. The claim goes beyond what the source establishes.",
+        "label": "not_established",
+        "label_matched": false,
+        "missing_preme_found": true,
+        "preme_signals": [
+          "beyond"
+        ],
+        "invented_assumption": false,
+        "invented_reasons": []
+      }
+    },
+    {
+      "fixture_idx": 4,
+      "gt_label": "beyond_scope",
+      "frozen": {
+        "text": "A team of Exetereter that differs how reprodu syll collects fail to accumulated later accurately measured measured on measure crop yields.",
+        "label": "unknown",
+        "label_matched": false,
+        "missing_preme_found": false,
+        "preme_signals": [],
+        "invented_assumption": false,
+        "invented_reasons": []
+      },
+      "finetuned": {
+        "text": "not- Passage \": explicitly: the handwritten is 10...5",
+        "label": "not_established",
+        "label_matched": false,
+        "missing_preme_found": false,
+        "preme_signals": [],
+        "invented_assumption": true,
+        "invented_reasons": [
+          "number '10.' not in source"
+        ]
+      }
+    }
+  ]
+}

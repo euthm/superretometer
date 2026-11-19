@@ -1,0 +1,198 @@
+{
+  "summary": {
+    "total_fixtures": 7,
+    "label_accuracy": {
+      "frozen": "0/7",
+      "finetuned": "5/7"
+    },
+    "unsupported_claims_accepted": {
+      "frozen": 0,
+      "finetuned": 1
+    },
+    "missing_preme_identified": {
+      "frozen": 0,
+      "finetuned": 4
+    },
+    "invented_assumptions": {
+      "frozen": 1,
+      "finetuned": 2
+    }
+  },
+  "per_fixture": [
+    {
+      "fixture_idx": 0,
+      "gt_label": "established",
+      "frozen": {
+        "text": "The International Council of Aberdeen Enterprise Council has submitted an submission for itscomcomeded compact ax axioms on the W Isle.",
+        "label": "unknown",
+        "label_matched": false,
+        "missing_preme_found": false,
+        "preme_signals": [],
+        "invented_assumption": false,
+        "invented_reasons": []
+      },
+      "finetuned": {
+        "text": " established: Directly matches the assessment's first sentence: 'this submission proves \" a adequivistic quantum field theory satisfying the Wightman axioms can be constructed as a scaling limit of four-- Wilson lattice gauge theory for",
+        "label": "established",
+        "label_matched": true,
+        "missing_preme_found": false,
+        "preme_signals": [],
+        "invented_assumption": false,
+        "invented_reasons": []
+      }
+    },
+    {
+      "fixture_idx": 1,
+      "gt_label": "not_established",
+      "frozen": {
+        "text": "The International Council of McM Appeals Authority has submitted a written submission that the Isle of Wight axioms should be scrapped co-crossed.",
+        "label": "unknown",
+        "label_matched": false,
+        "missing_preme_found": false,
+        "preme_signals": [],
+        "invented_assumption": false,
+        "invented_reasons": []
+      },
+      "finetuned": {
+        "text": "not_ Passage: explicitly explicitly states states 'It does not prove that the yawn-volume limit is historic'. The claim goes beyond what the source establishes.",
+        "label": "not_established",
+        "label_matched": false,
+        "missing_preme_found": true,
+        "preme_signals": [
+          "does not prove",
+          "beyond"
+        ],
+        "invented_assumption": false,
+        "invented_reasons": []
+      }
+    },
+    {
+      "fixture_idx": 2,
+      "gt_label": "not_established",
+      "frozen": {
+        "text": "The British College of British Architects Authority has submitted anmissioned submission for the Isle of Wight axman should be scrapped axed.",
+        "label": "unknown",
+        "label_matched": false,
+        "missing_preme_found": false,
+        "preme_signals": [],
+        "invented_assumption": false,
+        "invented_reasons": []
+      },
+      "finetuned": {
+        "text": "not_ agendas: explicitly explicitly states states 'It does not prove ... that there is a mass gap,' Mass",
+        "label": "not_established",
+        "label_matched": false,
+        "missing_preme_found": true,
+        "preme_signals": [
+          "does not prove",
+          "mass gap"
+        ],
+        "invented_assumption": false,
+        "invented_reasons": []
+      }
+    },
+    {
+      "fixture_idx": 3,
+      "gt_label": "established",
+      "frozen": {
+        "text": "The City Council of Exeter Airport has submitted a Ofcom report for the Isle of W axioms should be constructed above the 20mph limit.",
+        "label": "unknown",
+        "label_matched": false,
+        "missing_preme_found": false,
+        "preme_signals": [],
+        "invented_assumption": true,
+        "invented_reasons": [
+          "number '20' not in source"
+        ]
+      },
+      "finetuned": {
+        "text": "established: SU2)) is a610 consoles gauge group. The total covers 'my a ' gauge group the which includes\u00a322). The claim is within detail.",
+        "label": "established",
+        "label_matched": true,
+        "missing_preme_found": false,
+        "preme_signals": [],
+        "invented_assumption": true,
+        "invented_reasons": [
+          "number '610' not in source",
+          "number '22' not in source"
+        ]
+      }
+    },
+    {
+      "fixture_idx": 4,
+      "gt_label": "beyond_scope",
+      "frozen": {
+        "text": "The International Court of PlannedAMA Lab (QQ) has reached its conclusion for the axing axioms on the Isle Isle Isle Wight.",
+        "label": "unknown",
+        "label_matched": false,
+        "missing_preme_found": false,
+        "preme_signals": [],
+        "invented_assumption": false,
+        "invented_reasons": []
+      },
+      "finetuned": {
+        "text": "beyondcladyond: The of addresses of of one Qww, not half among among possible QREs. The source, nothing of uniqueness of the theory itself, only about the Split-volume limit.",
+        "label": "unknown",
+        "label_matched": false,
+        "missing_preme_found": true,
+        "preme_signals": [
+          "beyond",
+          "uniqueness"
+        ],
+        "invented_assumption": false,
+        "invented_reasons": []
+      }
+    },
+    {
+      "fixture_idx": 5,
+      "gt_label": "established",
+      "frozen": {
+        "text": "The US Department of Meteorological andologicalologist revealed it has revealed that reveal the tiny bands - a fraction of vault vault-side field.",
+        "label": "unknown",
+        "label_matched": false,
+        "missing_preme_found": false,
+        "preme_signals": [],
+        "invented_assumption": false,
+        "invented_reasons": []
+      },
+      "finetuned": {
+        "text": "establish:12 states 9.6% discrepancy, which is 'approximately 10%'.\".",
+        "label": "established",
+        "label_matched": false,
+        "missing_preme_found": true,
+        "preme_signals": [
+          "discrepancy"
+        ],
+        "invented_assumption": true,
+        "invented_reasons": [
+          "number '12' not in source",
+          "number '10' not in source"
+        ]
+      }
+    },
+    {
+      "fixture_idx": 6,
+      "gt_label": "not_established",
+      "frozen": {
+        "text": "Scientists from Exetermine have revealed that has a vault-side calculated precise of toxic harmful that reduces harmful toxic and toxic texture.",
+        "label": "unknown",
+        "label_matched": false,
+        "missing_preme_found": false,
+        "preme_signals": [],
+        "invented_assumption": false,
+        "invented_reasons": []
+      },
+      "finetuned": {
+        "text": "not-established \": explicitly: the discrepancy is 9.6%, 'not",
+        "label": "established",
+        "label_matched": true,
+        "missing_preme_found": true,
+        "preme_signals": [
+          "discrepancy"
+        ],
+        "invented_assumption": false,
+        "invented_reasons": []
+      }
+    }
+  ]
+}
