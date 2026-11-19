@@ -4,6 +4,32 @@ All notable changes to cognitive-harness (Superretometer).
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-11-19
+
+### Added
+- `ScopedManifest` (`cognitive_harness.analysis.scoped_enumeration`): explicit
+  KO set for bounded CH analysis — `verify_completeness`, `list_review_required`,
+  `scan_anti_patterns` without `enumeration_complete=True` globally.
+- Memory adapter: synthetic `Provenance(source="memory_unadapted")` fallback for
+  non-CH objects lacking provenance metadata.
+- `_present_ko` defensive guard: handles `None` provenance from any adapter.
+- 22 regression tests: 5 for mixed CH/non-CH search results, 7 for scoped
+  enumeration, 10 for persistence fixes (included from prior patches).
+
+### Fixed
+- `NoneType.source` crash: `memory_object_to_ko` produced `prov=None` for
+  Memory objects without `ch_provenance_source` or provenance dict, causing
+  `search_knowledge` to fail on mixed result sets.
+- `_present_ko` crash: `None` provenance from non-Memory adapters was not guarded.
+
+### Documentation
+- Scoped enumeration completeness limitations: scoped analysis requires
+  explicit KO enumeration; `verify_completeness` only checks presence in storage,
+  not semantic completeness of the scope.
+- CP-010–013 evidence chains are traversable via `justification_path` but remain
+  `unwarranted`: evidence KOs lack independent grounding (no CI logs, no git blob
+  hashes). Evidence KOs are provenance references, not evidence content.
+
 ## [0.8.1] — 2026-11-19
 
 - Expose evidence root IDs and shared ancestors in runtime warrant responses.
