@@ -6,7 +6,7 @@ Labels: 'established', 'not_established', 'beyond_scope'.
 
 Split by whole source family before producing variants.
 Reserve separate public families for evaluation.
-NIBIO case kept off training/tuning paths — evaluated on AI1 after freezing.
+Keep private evaluations and their outputs outside the public repository.
 """
 from __future__ import annotations
 

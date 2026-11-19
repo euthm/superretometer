@@ -2,7 +2,7 @@
 """Step 4 continued: Transfer evaluation on held-out fixtures.
 
 New fixtures from the same source family (yang-mills-committee) but with
-claims NOT seen during training. Plus the private NIBIO case.
+claims not seen during training.
 """
 import json
 import os
@@ -90,30 +90,8 @@ YANG_MILLS_HELD_OUT = [
     },
 ]
 
-# NIBIO case — kept private, evaluated locally only
-NIBIO_FIXTURE = {
-    "source_url": "private",
-    "source_passage": (
-        "Simuleringsrapport V9 p.8: The numerical model reproduces measured yields "
-        "with a mean deviation of 0.032 t/ha over 1344 data points. "
-        "The deviation is within acceptable tolerances for "
-        "the calibration period 2019–2023."
-    ),
-    "source_family": "nibio-yield",
-    "claim": (
-        "The numerical model reliably predicts crop yields outside the "
-        "2019–2023 calibration period."
-    ),
-    "label": "beyond_scope",
-    "reference_rationale": (
-        "The source only covers the calibration period 2019–2023. Extrapolation "
-        "beyond this period is not supported by the evidence."
-    ),
-}
-
-
 def main():
-    fixtures = YANG_MILLS_HELD_OUT + [NIBIO_FIXTURE]
+    fixtures = YANG_MILLS_HELD_OUT
 
     out_dir = "examples/ncm_finetune/finetune_outputs"
     out_path = os.path.join(out_dir, "held_out_fixtures.json")

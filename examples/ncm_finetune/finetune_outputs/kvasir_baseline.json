@@ -28,14 +28,7 @@
       "kvasir_label": "beyond_scope",
       "kvasir_rationale": "U(1) is abelian, not a simple compact group. Assessment specifically says simple compact gauge groups.",
       "correct": true
-    },
-    {
-      "fixture_idx": 4,
-      "gt_label": "beyond_scope",
-      "kvasir_label": "beyond_scope",
-      "kvasir_rationale": "Source covers calibration period 2019-2023 only. Extrapolation beyond this period is not supported.",
-      "correct": true
     }
   ],
-  "accuracy": "5/5"
+  "accuracy": "4/4"
 }

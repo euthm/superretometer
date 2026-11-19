@@ -1,9 +1,9 @@
 {
   "summary": {
-    "total_fixtures": 5,
+    "total_fixtures": 4,
     "label_accuracy": {
-      "frozen": "0/5",
-      "finetuned": "1/5"
+      "frozen": "0/4",
+      "finetuned": "1/4"
     },
     "unsupported_claims_accepted": {
       "frozen": 0,
@@ -15,7 +15,7 @@
     },
     "invented_assumptions": {
       "frozen": 1,
-      "finetuned": 2
+      "finetuned": 1
     }
   },
   "per_fixture": [
@@ -119,30 +119,6 @@
         ],
         "invented_assumption": false,
         "invented_reasons": []
-      }
-    },
-    {
-      "fixture_idx": 4,
-      "gt_label": "beyond_scope",
-      "frozen": {
-        "text": "A team of Exetereter that differs how reprodu syll collects fail to accumulated later accurately measured measured on measure crop yields.",
-        "label": "unknown",
-        "label_matched": false,
-        "missing_preme_found": false,
-        "preme_signals": [],
-        "invented_assumption": false,
-        "invented_reasons": []
-      },
-      "finetuned": {
-        "text": "not- Passage \": explicitly: the handwritten is 10...5",
-        "label": "not_established",
-        "label_matched": false,
-        "missing_preme_found": false,
-        "preme_signals": [],
-        "invented_assumption": true,
-        "invented_reasons": [
-          "number '10.' not in source"
-        ]
       }
     }
   ]

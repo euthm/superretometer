@@ -4,9 +4,9 @@
     "finetuned": "5/7"
   },
   "held_out": {
-    "frozen": "0/5",
-    "finetuned": "1/5",
-    "kvasir": "5/5"
+    "frozen": "0/4",
+    "finetuned": "1/4",
+    "kvasir": "4/4"
   },
-  "conclusion": "Fine-tuned NCM shows severe overfitting (5/7 train \u2192 1/5 held-out). Frozen NCM produces domain-irrelevant output. Kvasir achieves 5/5 on held-out with correct rationale for each case. NCM cannot distinguish not_established from beyond_scope on novel claims. Missing premise identification: fine-tuned=3/5, Kvasir=5/5."
+  "conclusion": "On four new claims from the public Yang-Mills source family, the evaluator mapped one fine-tuned output to the expected label using a partial match. None of the four outputs provided an exact label. The stored Kvasir baseline matched all four reference labels."
 }
