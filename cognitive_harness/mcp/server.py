@@ -29,6 +29,7 @@ from cognitive_harness.storage.inmemory import InMemoryStorage
 from cognitive_harness.reasoning.rule_engine import RuleEngineReasoner
 from cognitive_harness.orchestration.engine import OrchestrationEngine
 from cognitive_harness.analysis.warrant_analyzer import WarrantAnalyzer
+from cognitive_harness.orchestration.engine import _build_warrant_response
 from cognitive_harness.consumer.api import ConsumerAPI
 from cognitive_harness.mcp.protocol import tool_result
 
@@ -233,37 +234,22 @@ class MCPServer:
     def _handle_check_warrant(self, args):
         ko_id = args["conclusion_ko_id"]
         result = self.wa.compute_warrant(ko_id)
-        return {
-            "conclusion_ko_id": ko_id,
-            "warrant_status": result.warrant_status.value,
-            "supporting_kos": result.supporting_kos,
-            "independent_kos": result.independent_kos,
-            "dependent_kos": result.dependent_kos,
-            # CONDITIONALLY_WARRANTED is defined as the status that exposes its
-            # conditions; dropping them here left the caller with a bare verdict.
-            "conditional_assumptions": result.conditional_assumptions,
-            "cycles": result.cycles,
-            "contradicting_kos": result.contradicting_kos,
-            "independence": {
-                "evidence_count": result.independence.evidence_count,
-                "independent_root_count": result.independence.independent_root_count,
-                "root_sets": {k: sorted(v) for k, v in result.independence.root_sets.items()},
-                "shared_ancestors": {
-                    k: sorted(v) for k, v in result.independence.shared_ancestors.items()
-                },
-            } if result.independence else None,
-            "anti_pattern_diagnoses": [
-                {
-                    "pattern": d.pattern.value,
-                    "offending_ko_ids": d.offending_ko_ids,
-                    "justification_path": d.justification_path,
-                    "provenance_roots": d.provenance_roots,
-                    "violated_condition": d.violated_condition,
-                    "suggested_missing_evidence": d.suggested_missing_evidence,
-                }
-                for d in result.anti_pattern_diagnoses
-            ],
-        }
+        # Use the shared builder for the standard fields, then add MCP-specific
+        # fields (contradicting_kos, anti_pattern_diagnoses with justification_path).
+        resp = _build_warrant_response(result)
+        resp["contradicting_kos"] = result.contradicting_kos
+        resp["anti_pattern_diagnoses"] = [
+            {
+                "pattern": d.pattern.value,
+                "offending_ko_ids": d.offending_ko_ids,
+                "justification_path": d.justification_path,
+                "provenance_roots": d.provenance_roots,
+                "violated_condition": d.violated_condition,
+                "suggested_missing_evidence": d.suggested_missing_evidence,
+            }
+            for d in result.anti_pattern_diagnoses
+        ]
+        return resp
 
     def _handle_justification_path(self, args):
         path_ids = self.storage.get_justification_path(args["ko_id"])

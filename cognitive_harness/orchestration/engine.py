@@ -255,26 +255,43 @@ class OrchestrationEngine:
 
     def check_warrant(self, conclusion_ko_id: str) -> dict:
         result = self.warrant_analyzer.compute_warrant(conclusion_ko_id)
-        return {
-            "conclusion_ko_id": result.conclusion_ko_id,
-            "warrant_status": result.warrant_status.value,
-            "supporting_kos": result.supporting_kos,
-            "independent_kos": result.independent_kos,
-            "dependent_kos": result.dependent_kos,
-            "anti_patterns": [
-                {"pattern": d.pattern.value,
-                 "offending_ko_ids": d.offending_ko_ids,
-                 "violated_condition": d.violated_condition,
-                 "resolution_hint": d.resolution_hint}
-                for d in result.anti_pattern_diagnoses
-            ],
-            "conditional_assumptions": result.conditional_assumptions,
-            "independence": {
-                "evidence_count": result.independence.evidence_count if result.independence else 0,
-                "independent_root_count": result.independence.independent_root_count if result.independence else 0,
+        # Reuse the same response builder as the packaged MCP server
+        # so that root_sets and shared_ancestors are never dropped.
+        return _build_warrant_response(result)
+
+
+def _build_warrant_response(result) -> dict:
+    """Build the check_warrant response dict from a WarrantResult.
+
+    Shared between the packaged MCP server (mcp/server.py) and
+    OrchestrationEngine so the Memory runtime returns the same
+    provenance-tracing fields (root_sets, shared_ancestors) as the
+    standalone server.
+    """
+    return {
+        "conclusion_ko_id": result.conclusion_ko_id,
+        "warrant_status": result.warrant_status.value,
+        "supporting_kos": result.supporting_kos,
+        "independent_kos": result.independent_kos,
+        "dependent_kos": result.dependent_kos,
+        "anti_patterns": [
+            {"pattern": d.pattern.value,
+             "offending_ko_ids": d.offending_ko_ids,
+             "violated_condition": d.violated_condition,
+             "resolution_hint": d.resolution_hint}
+            for d in result.anti_pattern_diagnoses
+        ],
+        "conditional_assumptions": result.conditional_assumptions,
+        "independence": {
+            "evidence_count": result.independence.evidence_count if result.independence else 0,
+            "independent_root_count": result.independence.independent_root_count if result.independence else 0,
+            "root_sets": {k: sorted(v) for k, v in (result.independence.root_sets or {}).items()},
+            "shared_ancestors": {
+                k: sorted(v) for k, v in (result.independence.shared_ancestors or {}).items()
             },
-            "cycles": result.cycles,
-        }
+        } if result.independence else None,
+        "cycles": result.cycles,
+    }
 
     def scan_anti_patterns(self) -> list[dict]:
         findings = self.warrant_analyzer.detect_all_anti_patterns()
