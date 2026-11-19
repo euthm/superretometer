@@ -244,14 +244,7 @@ class MCPServer:
             "conditional_assumptions": result.conditional_assumptions,
             "cycles": result.cycles,
             "contradicting_kos": result.contradicting_kos,
-            "independence": {
-                "evidence_count": result.independence.evidence_count,
-                "independent_root_count": result.independence.independent_root_count,
-                "root_sets": {k: sorted(v) for k, v in result.independence.root_sets.items()},
-                "shared_ancestors": {
-                    k: sorted(v) for k, v in result.independence.shared_ancestors.items()
-                },
-            } if result.independence else None,
+            "independence": result.independence.as_response() if result.independence else None,
             "anti_pattern_diagnoses": [
                 {
                     "pattern": d.pattern.value,

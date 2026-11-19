@@ -4,6 +4,10 @@ All notable changes to cognitive-harness (Superretometer).
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-11-19
+
+- Expose evidence root IDs and shared ancestors in runtime warrant responses.
+
 ## [0.8.0] — 2026-11-11
 
 ### Added

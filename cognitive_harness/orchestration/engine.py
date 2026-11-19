@@ -269,9 +269,9 @@ class OrchestrationEngine:
                 for d in result.anti_pattern_diagnoses
             ],
             "conditional_assumptions": result.conditional_assumptions,
-            "independence": {
-                "evidence_count": result.independence.evidence_count if result.independence else 0,
-                "independent_root_count": result.independence.independent_root_count if result.independence else 0,
+            "independence": result.independence.as_response() if result.independence else {
+                "evidence_count": 0,
+                "independent_root_count": 0,
             },
             "cycles": result.cycles,
         }
