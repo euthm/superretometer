@@ -1,158 +1,117 @@
 # FILE: examples/ncm_explanations/ncm_run.py
-"""Direct NCM generation call using the upstream code paths.
+"""NCM generation using the upstream eval_shard.py directly.
 
-Loads the XSum tokenizer and generator, then generates a summary for
-each warrant record. Uses the same code path as eval_shard.py.
+Instead of reimplementing the decoder (which requires frequency_allowance,
+frequency_deficit, adjacency_penalty, cfg_scale etc.), we call the upstream
+eval_shard.py as a subprocess with custom input data.
+
+The upstream evaluator expects:
+  - config: config/eval/xsum.yaml
+  - checkpoint-dir: directory with tokenizer.pt, generator.pt, config.yaml
+  - data-dir: directory with passages.pickle (list of input strings)
+
+We create a minimal passages.pickle with our prompts and run the evaluator.
 """
 from __future__ import annotations
-import os
-import sys
 import argparse
+import json
+import os
+import pickle
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
+
 def generate_with_ncm(prompts: list[str], checkpoint_dir: str, source_dir: str) -> list[dict]:
-    """Generate NCM summaries for the given prompts.
+    """Generate NCM summaries using the upstream eval_shard.py.
 
-    Args:
-        prompts: list of text strings to summarize
-        checkpoint_dir: path to xsum checkpoint (tokenizer.pt, generator.pt)
-        source_dir: path to HazyResearch/ncm checkout
-
-    Returns:
-        List of dicts with 'input', 'summary', 'status', 'error'
+    Creates a temporary passages.pickle, runs the upstream shard evaluator,
+    and returns the generated summaries.
     """
-    sys.path.insert(0, source_dir)
-    os.environ["NCM_ROOT"] = source_dir
-
-    import torch
-    from omegaconf import OmegaConf
-    from models.next_concept import NextConceptTransformer
-    from tokenization.vqvae_tokenizer import VQVAETokenizer
-    from transformers import AutoTokenizer
-
+    results = []
     cfg_path = Path(checkpoint_dir) / "config.yaml"
+
     if not cfg_path.exists():
         return [{"input": p, "summary": "", "status": "error",
                  "error": f"config.yaml not found in {checkpoint_dir}"} for p in prompts]
 
-    CFG = OmegaConf.load(cfg_path)
+    if not prompts:
+        return []
 
-    # Set checkpoint paths
-    CFG.tokenizer.vqvae.checkpoint_path = os.path.join(checkpoint_dir, CFG.checkpoints.tokenizer)
-    for key, name in (('vocab_file_path', 'bpe_vocab'), ('merges_file_path', 'bpe_merges')):
-        if CFG.checkpoints.get(name):
-            CFG.tokenizer.pre_tokenizer[key] = os.path.join(checkpoint_dir, CFG.checkpoints[name])
-
+    tmpdir = tempfile.mkdtemp(prefix="ncm_eval_")
     try:
-        tk = VQVAETokenizer.from_config(CFG.tokenizer)
-        tk.vqvae = tk.vqvae.cuda().eval()
-        net = NextConceptTransformer(vqvae_local=tk.vqvae, config=CFG.model).cuda()
-        sd = torch.load(os.path.join(checkpoint_dir, CFG.checkpoints.generator),
-                        map_location="cpu", weights_only=False)
-        net.load_state_dict(sd["model"], strict=True)
-        net.eval()
-    except Exception as e:
-        return [{"input": p, "summary": "", "status": "error", "error": str(e)} for p in prompts]
+        # Create data directory with passages.pickle
+        data_dir = Path(tmpdir) / "data"
+        data_dir.mkdir()
 
-    P = int(CFG.model.prefix_len)
-    EOS = tk.pre_tokenizer.eos_token_id
-    PAD = tk.pre_tokenizer.pad_token_id
+        # XSum expects two pickle files:
+        #   passages.pickle — list of input strings
+        #   reference_summaries.pickle — list of reference strings (empty for us)
+        with open(data_dir / "passages.pickle", "wb") as f:
+            pickle.dump(prompts, f)
+        with open(data_dir / "reference_summaries.pickle", "wb") as f:
+            pickle.dump([""] * len(prompts), f)
 
-    src_tok = AutoTokenizer.from_pretrained(str(CFG.tokenizer.pre_tokenizer.model_id))
+        out_path = Path(tmpdir) / "output.pkl"
 
-    G = CFG.generation
-    temp = G.get("temperature", 1.0)
-    top_k = G.get("top_k", 1)
-    top_p = G.get("top_p", 0.0)
-    cfg_scale = G.get("cfg_scale", 0.0)
+        # Run upstream eval_shard.py
+        shard_script = Path(source_dir) / "scripts" / "eval_shard.py"
+        if not shard_script.exists():
+            return [{"input": p, "summary": "", "status": "error",
+                     "error": f"eval_shard.py not found at {shard_script}"} for p in prompts]
 
-    def prefix(item):
-        ids = src_tok(item)["input_ids"]
-        return (ids[:P] + [PAD] * P)[:P]
+        env = os.environ.copy()
+        env["NCM_ROOT"] = source_dir
+        env["TOKENIZERS_PARALLELISM"] = "false"
 
-    def pick_tokens(logits):
-        freq = G.get("frequency_penalty", 2.0)
-        adj_str = G.get("adjacency_penalty", "5,4,0.5")
-        adj = [float(v) for v in adj_str.split(",")] if adj_str else []
-        allow_path = G.get("frequency_allowance", "generator.pt:inference.token_unigram")
-        V = logits.shape[-1]
-        T = logits.shape[1]
-        lg = logits.double()
-        if allow_path:
-            try:
-                ALLOW = sd[allow_path.split(":")[1].split(".")[0] if ":" not in allow_path else allow_path.split(":")[1]]
-                # frequency_allowance format: "generator.pt:inference.token_unigram"
-                # sd is the state dict, need to navigate
-                parts = allow_path.split(":")
-                if len(parts) == 2:
-                    ref_key = parts[1]
-                    obj = sd["model"] if ref_key.startswith("inference") else sd
-                    for k in ref_key.split("."):
-                        if k in obj:
-                            obj = obj[k]
-                    ALLOW = obj[:V].double()
-                else:
-                    ALLOW = None
-            except:
-                ALLOW = None
-        else:
-            ALLOW = None
-        allow = (ALLOW[:V] * T)[None, :] if ALLOW is not None else None
-        al = adj[0] if adj else 0.0
-        aw = int(adj[1]) if adj and len(adj) > 1 else 1
-        ad = adj[2] if adj and len(adj) > 2 else 1.0
-        B = logits.shape[0]
-        cnt = torch.zeros(B, V, dtype=torch.float64, device=lg.device)
-        out = torch.empty(B, T, dtype=torch.long, device=lg.device)
-        hist = []
-        for t in range(T):
-            step = lg[:, t, :].clone()
-            if freq > 0:
-                excess = (cnt - allow).clamp_min(0.0) if allow is not None else cnt
-                step -= freq * excess
-            for j, h in enumerate(reversed(hist[-aw:])):
-                step.scatter_add_(1, h[:, None],
-                    torch.full((B, 1), -al * ad ** j, dtype=torch.float64, device=lg.device))
-            p = step.argmax(-1)
-            out[:, t] = p
-            hist.append(p)
-            cnt.scatter_add_(1, p[:, None], torch.ones(B, 1, dtype=torch.float64, device=lg.device))
-        return out
+        proc = subprocess.run(
+            [sys.executable, str(shard_script),
+             "--config", str(cfg_path),
+             "--checkpoint-dir", checkpoint_dir,
+             "--data-dir", str(data_dir),
+             "--n", str(len(prompts)),
+             "--bs", str(len(prompts)),  # process all in one batch
+             "--shard", "0",
+             "--nshards", "1",
+             "--out", str(out_path)],
+            capture_output=True, text=True, timeout=300, env=env,
+            cwd=source_dir,
+        )
 
-    CUT_AT_EOS = True
+        if proc.returncode != 0 or not out_path.exists():
+            error_msg = proc.stderr.strip() or proc.stdout.strip() or "eval_shard.py failed"
+            return [{"input": p, "summary": "", "status": "error", "error": error_msg} for p in prompts]
 
-    def dec(ids):
-        ids = list(ids)
-        if CUT_AT_EOS and EOS in ids:
-            ids = ids[:ids.index(EOS)]
-        return tk.pre_tokenizer.decode([t for t in ids if t not in (EOS, PAD)], skip_special_tokens=True)
+        # Load results
+        with open(out_path, "rb") as f:
+            out_data = pickle.load(f)
 
-    def run(x):
-        with torch.no_grad():
-            g = net.generate(None, x, temperature=temp, top_k=top_k, top_p=top_p,
-                            cfg_scale=cfg_scale, cfg_null_eos=EOS)
-            _, zl = tk.vqvae.vq.idx_to_zhats(g, return_zlevels=True)
-            ids = pick_tokens(tk.vqvae.decoder(zl[-1])).tolist()
-            return [dec(r) for r in ids]
+        hyps = out_data.get("hyps", [])
+        if len(hyps) != len(prompts):
+            return [{"input": p, "summary": "", "status": "error",
+                     "error": f"Expected {len(prompts)} outputs, got {len(hyps)}"} for p in prompts]
 
-    results = []
-    for prompt in prompts:
-        try:
-            x = torch.tensor([prefix(prompt)], device="cuda")
-            summaries = run(x)
+        for i, prompt in enumerate(prompts):
             results.append({
                 "input": prompt,
-                "summary": summaries[0] if summaries else "",
+                "summary": hyps[i],
                 "status": "generated",
                 "error": "",
             })
-        except Exception as e:
-            results.append({
-                "input": prompt,
-                "summary": "",
-                "status": "error",
-                "error": str(e),
-            })
+
+    except subprocess.TimeoutExpired:
+        return [{"input": p, "summary": "", "status": "error",
+                 "error": "NCM generation timed out (300s)"} for p in prompts]
+    except Exception as e:
+        return [{"input": p, "summary": "", "status": "error", "error": str(e)} for p in prompts]
+    finally:
+        # Cleanup
+        import shutil
+        try:
+            shutil.rmtree(tmpdir)
+        except OSError:
+            pass
 
     return results
 
@@ -165,7 +124,6 @@ if __name__ == "__main__":
     parser.add_argument("--output-file", required=True, help="JSON output file")
     args = parser.parse_args()
 
-    import json
     prompts = json.load(open(args.input_file))
     results = generate_with_ncm(prompts, args.checkpoint_dir, args.source_dir)
     json.dump(results, open(args.output_file, "w"), indent=2)
