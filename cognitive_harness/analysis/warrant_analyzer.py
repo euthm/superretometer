@@ -43,6 +43,15 @@ class IndependenceResult:
     root_sets: dict[str, set[str]] = field(default_factory=dict)  # evidence_id -> {root_ko_ids}
     shared_ancestors: dict[str, set[str]] = field(default_factory=dict)  # root_id -> {evidence_ids sharing it}
 
+    def as_response(self) -> dict:
+        """Serialize the known evidence roots and their shared ancestors."""
+        return {
+            "evidence_count": self.evidence_count,
+            "independent_root_count": self.independent_root_count,
+            "root_sets": {key: sorted(roots) for key, roots in self.root_sets.items()},
+            "shared_ancestors": {key: sorted(ids) for key, ids in self.shared_ancestors.items()},
+        }
+
 
 @dataclass
 class WarrantResult:
