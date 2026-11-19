@@ -1,0 +1,100 @@
+{
+  "test": "vqvae_roundtrip",
+  "n_samples": 10,
+  "avg_word_overlap": 0.565,
+  "facts_preserved": "7/10",
+  "failing_pairs": [
+    "quantitative",
+    "sign_change",
+    "scope_limited"
+  ],
+  "results": [
+    {
+      "label": "positive_claim",
+      "original": "The evidence supports the claim within the stated assumptions and boundary conditions.",
+      "reconstructed": "The evidence supports the claim within",
+      "word_overlap": 0.5,
+      "facts_ok": true,
+      "errors": []
+    },
+    {
+      "label": "negative_claim",
+      "original": "The source does not establish the claim because no independent measurement is available.",
+      "reconstructed": "The source does not establish the claims because no independent measurement is available.",
+      "word_overlap": 0.917,
+      "facts_ok": true,
+      "errors": []
+    },
+    {
+      "label": "quantitative",
+      "original": "The maximum deviation is 0.032 across 1344 compared points in steady state.",
+      "reconstructed": "The maximum",
+      "word_overlap": 0.167,
+      "facts_ok": false,
+      "errors": [
+        "quantity_lost: '0.032'",
+        "quantity_lost: '1344'"
+      ]
+    },
+    {
+      "label": "conditional",
+      "original": "The result holds only when the boundary condition is met and the parameter is within range.",
+      "reconstructed": "The result holds only when the wooden condition is met and",
+      "word_overlap": 0.692,
+      "facts_ok": true,
+      "errors": []
+    },
+    {
+      "label": "not_established",
+      "original": "The mass gap is not established by this source; the construction proves existence only.",
+      "reconstructed": "The mass gap is not established by this",
+      "word_overlap": 0.615,
+      "facts_ok": true,
+      "errors": []
+    },
+    {
+      "label": "polarity_flip",
+      "original": "The measurement contradicts the hypothesis and points to the opposite conclusion.",
+      "reconstructed": "The. contradicts the hypothesis",
+      "word_overlap": 0.333,
+      "facts_ok": true,
+      "errors": []
+    },
+    {
+      "label": "missing_premise",
+      "original": "Independent validation of the yield model is required before the claim can be accepted.",
+      "reconstructed": "Independent validation of the yield is is required before the claim can be accepted.",
+      "word_overlap": 0.923,
+      "facts_ok": true,
+      "errors": []
+    },
+    {
+      "label": "sign_change",
+      "original": "The thermal gradient is negative, not positive, which changes the safety assessment.",
+      "reconstructed": "The silicon% is positive, not positive, which to the safety assessment.",
+      "word_overlap": 0.636,
+      "facts_ok": false,
+      "errors": [
+        "sign_lost: 'negative' missing"
+      ]
+    },
+    {
+      "label": "scope_limited",
+      "original": "The construction proves existence of the solution but not uniqueness or stability.",
+      "reconstructed": "The construction proves phases of the",
+      "word_overlap": 0.364,
+      "facts_ok": false,
+      "errors": [
+        "polarity_flip: 'not' lost"
+      ]
+    },
+    {
+      "label": "two_conditions",
+      "original": "Both temperature control and pressure monitoring must be satisfied for the result to hold.",
+      "reconstructed": "Both heat control and pressure. must be satisfied",
+      "word_overlap": 0.5,
+      "facts_ok": true,
+      "errors": []
+    }
+  ]
+}
