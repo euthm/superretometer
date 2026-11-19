@@ -69,6 +69,9 @@ All notable changes to cognitive-harness (Superretometer).
   for drift in CI; distinguish version notes from a published package release.
 - Document portable evidence, manual checkpoint handover and the seven
   implementation gates on the public website.
+- Prepare #19 context-continuity review artifacts, candidate comparison profiles,
+  functional-control definitions and a read-only version/environment probe. No
+  checkpoint engine, OpenCode plugin or performance result is delivered yet.
 - Record StrategyServer as the maintainer's current external strategy workflow,
   replacing the previous local EPF workflow.
 - Clarify the boundary between external strategy/planning, Superretometer evidence
