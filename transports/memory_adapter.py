@@ -1253,12 +1253,16 @@ class MemoryAdapter(StorageInterface):
         if ko is None or ko.type != KOType.EVIDENCE_ITEM:
             return None
         content = ko.content if isinstance(ko.content, dict) else {}
-        # Older evidence objects omitted claim_id; recover it from the graph.
+        # Recover claim_id from graph edge (CH logical ID) when available;
+        # fall back to content-level claim_id (may be Memory UUID).
         edge = next((r for r in ko.relations if r.type in
-                     (RelationType.SUPPORTS, RelationType.CONTRADICTS)), None)
+                      (RelationType.SUPPORTS, RelationType.CONTRADICTS)), None)
+        ev_claim_id = edge.to if edge else ""
+        if not ev_claim_id:
+            ev_claim_id = content.get("claim_id", "")
         ev = {
             "id": ko.id,
-            "claim_id": content.get("claim_id") or (edge.to if edge else ""),
+            "claim_id": ev_claim_id,
             "status": content.get("status", ""),
             "observation": content.get("observation", ""),
             "records": content.get("records", []),
@@ -1277,10 +1281,15 @@ class MemoryAdapter(StorageInterface):
         evidence_ids = list(claim.evidence_ids)
         evidence_ids.extend(src for src, _ in self.get_incoming_relations(
             claim.id, frozenset({RelationType.SUPPORTS, RelationType.CONTRADICTS})))
+        # Resolve claim.id to all known identifiers: CH logical ID + Memory UUID
+        claim_uuid = self._resolve_ch_id(claim.id)
+        claim_ids = {claim.id}
+        if claim_uuid and claim_uuid != claim.id:
+            claim_ids.add(claim_uuid)
         result = []
         for evidence_id in dict.fromkeys(evidence_ids):
             ev = self.get_evidence(evidence_id)
-            if ev is not None and ev["claim_id"] == claim.id:
+            if ev is not None and ev["claim_id"] in claim_ids:
                 result.append(ev)
         return result
 
