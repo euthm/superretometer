@@ -306,6 +306,17 @@ def memory_object_to_ko(obj: dict) -> KnowledgeObject:
             derived_from=p.get("derived_from"),
             independent=p.get("independent", None),
         )
+    # Fallback: non-CH Memory objects have no provenance fields.
+    # Emit a synthetic provenance so downstream _present_ko does not crash.
+    if prov is None:
+        prov = Provenance(
+            source="memory_unadapted",
+            author="system",
+            timestamp=datetime.now(timezone.utc),
+            revision=1,
+            derived_from=None,
+            independent=False,
+        )
 
     # Parse derivation
     deriv = None
