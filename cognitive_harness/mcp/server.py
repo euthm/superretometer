@@ -29,7 +29,7 @@ from cognitive_harness.storage.inmemory import InMemoryStorage
 from cognitive_harness.reasoning.rule_engine import RuleEngineReasoner
 from cognitive_harness.orchestration.engine import OrchestrationEngine
 from cognitive_harness.analysis.warrant_analyzer import WarrantAnalyzer
-from cognitive_harness.orchestration.engine import _build_warrant_response
+from cognitive_harness.orchestration.engine import _build_warrant_response, _ncm_challenge_suggestion
 from cognitive_harness.consumer.api import ConsumerAPI
 from cognitive_harness.mcp.protocol import tool_result
 
@@ -234,9 +234,11 @@ class MCPServer:
     def _handle_check_warrant(self, args):
         ko_id = args["conclusion_ko_id"]
         result = self.wa.compute_warrant(ko_id)
+        # Ask NCM for a challenging hypothesis (non-blocking, advisory)
+        ncm = _ncm_challenge_suggestion(result)
         # Use the shared builder for the standard fields, then add MCP-specific
         # fields (contradicting_kos, anti_pattern_diagnoses with justification_path).
-        resp = _build_warrant_response(result)
+        resp = _build_warrant_response(result, ncm_suggestion=ncm)
         resp["contradicting_kos"] = result.contradicting_kos
         resp["anti_pattern_diagnoses"] = [
             {

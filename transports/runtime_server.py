@@ -336,6 +336,7 @@ def handle_search_knowledge(components: dict, args: dict) -> dict:
 def handle_check_warrant(components: dict, args: dict) -> dict:
     ko_id = args.get("ko_id", "")
     orchestrator = components["orchestrator"]
+    # check_warrant now includes NCM suggestion (if env vars set)
     return orchestrator.check_warrant(ko_id)
 
 
@@ -551,7 +552,7 @@ TOOLS_METADATA = {
         },
     },
     "check_warrant": {
-        "description": "Compute epistemic warrant for a conclusion KO",
+        "description": "Compute epistemic warrant for a conclusion KO. Returns verdict, provenance tracing (root_sets, shared_ancestors), and an optional NCM suggestion with an alternative hypothesis if NCM_CHECKPOINT_DIR and NCM_SOURCE_DIR are configured.",
         "inputSchema": {
             "type": "object",
             "properties": {"ko_id": {"type": "string"}},
