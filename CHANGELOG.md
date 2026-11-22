@@ -4,6 +4,14 @@ All notable changes to cognitive-harness (Superretometer).
 
 ## [Unreleased]
 
+## [0.9.0]
+
+### Added
+
+- Optional Go MCP preview for immutable graph snapshots, with `orientation`,
+  `justification_path`, `impact_set`, and `check_warrant` over stdio or loopback
+  Streamable HTTP. See [the Go build and run instructions](go/README.md).
+
 ## [0.8.2] — 2026-11-19
 
 ### Added

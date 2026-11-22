@@ -1,0 +1,13 @@
+{
+  "objects": [
+    {"id":"source","title":"Original material spec","type":"specification","scope":"rocom/material","epistemic_status":"canonical"},
+    {"id":"model","title":"Stress calculation","type":"model_result","relations":[{"to":"source","type":"derived_from"}]},
+    {"id":"claim","title":"Design is safe","type":"conclusion","epistemic_status":"canonical","scope":"rocom/design","review_required":true,"relations":[{"to":"model","type":"depends_on"},{"to":"missing","type":"fitted_on"},{"to":"unrelated","type":"contradicts"}]},
+    {"id":"trial","title":"Measured deflection","type":"observation","relations":[{"to":"claim","type":"supports"}]},
+    {"id":"validator","title":"Reviewed experiment","type":"evidence","relations":[{"to":"claim","type":"validates"}]},
+    {"id":"consumer","title":"Installation procedure","type":"requirement","relations":[{"to":"claim","type":"depends_on"}]},
+    {"id":"unrelated","title":"Other project rule","type":"specification","epistemic_status":"canonical","scope":"other"},
+    {"id":"loop-a","title":"First cycle member","relations":[{"to":"loop-b","type":"depends_on"}]},
+    {"id":"loop-b","title":"Second cycle member","relations":[{"to":"loop-a","type":"depends_on"}]}
+  ]
+}
