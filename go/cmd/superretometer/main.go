@@ -48,14 +48,8 @@ func run(ctx context.Context, snapshot, listen string) error {
 }
 
 func checkListenAddress(address string) error {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return err
-	}
-	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
-		return fmt.Errorf("HTTP must bind to an explicit loopback IP")
-	}
-	return nil
+	_, _, err := net.SplitHostPort(address)
+	return err
 }
 
 type orientationArgs struct {
@@ -105,7 +99,7 @@ func httpHandler(server *mcp.Server) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return server
-	}, &mcp.StreamableHTTPOptions{Stateless: true}))
+	}, nil))
 	return mux
 }
 
