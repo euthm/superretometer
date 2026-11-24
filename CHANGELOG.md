@@ -4,6 +4,24 @@ All notable changes to cognitive-harness (Superretometer).
 
 ## [Unreleased]
 
+### Go MCP service 0.10.0
+
+- Complete the 11-tool public MCP interface and add explicit proposal execution,
+  evidence readback, lifecycle tools and both gate policies (29 tools total).
+- Accept the compatible `mcp` command; support empty in-memory startup and
+  durable `--state` with one-time snapshot import, exclusive writer ownership,
+  atomic persistence and idempotent proposal execution.
+- Add whole-graph anti-pattern scans, four simulation gates and seven
+  implementation gates, with operator-controlled filesystem freshness access.
+- Enforce normative canonical promotion requirements on final candidate state,
+  preserve stable identities/succession history and materialize tensions.
+- Add authenticated/proxy-protected HTTP operation, all-method Origin checks,
+  read-only mode, health checks, graceful shutdown and container packaging.
+- Verify Go against unchanged Python conformance/adversarial fixtures; run Go
+  race tests, parity checks, binary builds and container checks in CI.
+- Python package version and warrant semantics remain unchanged. See
+  [the Go service guide](go/README.md) for scope and migration boundaries.
+
 ## [0.9.0]
 
 ### Added

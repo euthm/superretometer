@@ -8,8 +8,12 @@ import (
 )
 
 type Provenance struct {
-	Source      string `json:"source"`
-	Independent bool   `json:"independent"`
+	Source      string  `json:"source"`
+	Independent bool    `json:"independent"`
+	Author      string  `json:"author,omitempty"`
+	Timestamp   string  `json:"timestamp,omitempty"`
+	Revision    int     `json:"revision,omitempty"`
+	DerivedFrom *string `json:"derived_from,omitempty"`
 }
 
 type Derivation struct {

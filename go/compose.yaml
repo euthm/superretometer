@@ -1,0 +1,35 @@
+services:
+  superretometer:
+    build:
+      context: .
+      args:
+        REVISION: ${SUPERRETOMETER_REVISION:-development}
+    command:
+      - mcp
+      - --state
+      - /data/state.json
+      - --listen
+      - 0.0.0.0:3010
+      - --behind-proxy
+    ports:
+      - "127.0.0.1:3010:3010"
+    volumes:
+      - superretometer-data:/data
+    environment:
+      GOMEMLIMIT: 384MiB
+      SUPERRETOMETER_AUTH_TOKEN: ${SUPERRETOMETER_AUTH_TOKEN:-}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 1.0
+    stop_grace_period: 15s
+
+volumes:
+  superretometer-data:
