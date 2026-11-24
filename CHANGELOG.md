@@ -4,6 +4,11 @@ All notable changes to cognitive-harness (Superretometer).
 
 ## [Unreleased]
 
+## [0.10.0] — release prepared
+
+Prepared in the repository. Package publication, Go release assets and deployed
+services have separate release status; see [the version notes](docs/releases/v0.10.0.md).
+
 ### Go MCP service 0.10.0
 
 - Complete the 11-tool public MCP interface and add explicit proposal execution,
@@ -19,7 +24,9 @@ All notable changes to cognitive-harness (Superretometer).
   read-only mode, health checks, graceful shutdown and container packaging.
 - Verify Go against unchanged Python conformance/adversarial fixtures; run Go
   race tests, parity checks, binary builds and container checks in CI.
-- Python package version and warrant semantics remain unchanged. See
+- Align Python package metadata with repository version 0.10.0. The Python
+  implementation and normative warrant semantics remain unchanged. The Go
+  executable is built separately and is not included in the Python wheel. See
   [the Go service guide](go/README.md) for scope and migration boundaries.
 
 ## [0.9.0]
