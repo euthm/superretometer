@@ -1,0 +1,8 @@
+bin/
+dist/
+*.test
+*.exe
+state*.json
+*.lock
+.env
+.env.*

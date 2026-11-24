@@ -21,6 +21,39 @@ type Object struct {
 	Derivation     *Derivation `json:"derivation"`
 	EvidenceIDs    []string    `json:"evidence_ids"`
 	Relations      []Relation  `json:"relations"`
+	Content        any         `json:"content,omitempty"`
+	Validators     []Validator `json:"validators,omitempty"`
+	ReviewReason   string      `json:"review_reason,omitempty"`
+	Confidence     string      `json:"confidence,omitempty"`
+	ViewpointIDs   []string    `json:"viewpoint_ids,omitempty"`
+	Assumptions    []string    `json:"assumptions,omitempty"`
+	TensionIDs     []string    `json:"tension_ids,omitempty"`
+	AntiPatterns   []string    `json:"anti_patterns,omitempty"`
+	ValidFrom      *string     `json:"valid_from,omitempty"`
+	ValidTo        *string     `json:"valid_to,omitempty"`
+	SupersedesID   *string     `json:"supersedes_id,omitempty"`
+	SupersededByID *string     `json:"superseded_by_id,omitempty"`
+}
+
+// Validator is the public FalsifiableValidator model. A missing passes field
+// retains the reference model's true default; a recorded failure stays false.
+type Validator struct {
+	ID               string `json:"id"`
+	Description      string `json:"description"`
+	WhatWouldFalsify string `json:"what_would_falsify"`
+	KOID             string `json:"ko_id"`
+	Passes           bool   `json:"passes"`
+	Observation      string `json:"observation"`
+}
+
+func (v *Validator) UnmarshalJSON(data []byte) error {
+	type plain Validator
+	value := plain{Passes: true}
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*v = Validator(value)
+	return nil
 }
 
 type Relation struct {
@@ -44,10 +77,12 @@ type Orientation struct {
 // Graph is an immutable in-memory snapshot. Incoming edges preserve object
 // order, as in the Python storage implementation.
 type Graph struct {
-	objects  map[string]Object
-	incoming map[string][]Relation
-	datasets map[string]Dataset
-	evidence map[string]bool
+	objects        map[string]Object
+	order          []string
+	incoming       map[string][]Relation
+	datasets       map[string]Dataset
+	evidence       map[string]bool
+	freshnessRoots []string
 }
 
 func Load(reader io.Reader) (*Graph, error) {
@@ -59,6 +94,7 @@ func Load(reader io.Reader) (*Graph, error) {
 		} `json:"evidence"`
 	}
 	decoder := json.NewDecoder(reader)
+	decoder.UseNumber()
 	if err := decoder.Decode(&snapshot); err != nil {
 		return nil, fmt.Errorf("decode graph snapshot: %w", err)
 	}
@@ -96,7 +132,17 @@ func Load(reader io.Reader) (*Graph, error) {
 		if object.Truth == "" {
 			object.Truth = "assumption"
 		}
+		if object.Type == "" {
+			object.Type = "requirement"
+		}
+		if object.Status == "" {
+			object.Status = "proposed"
+		}
+		if object.Confidence == "" {
+			object.Confidence = "speculative"
+		}
 		g.objects[object.ID] = object
+		g.order = append(g.order, object.ID)
 		for _, edge := range object.Relations {
 			if edge.To == "" || edge.Type == "" {
 				return nil, fmt.Errorf("knowledge object %q has an incomplete relation", object.ID)
@@ -105,6 +151,33 @@ func Load(reader io.Reader) (*Graph, error) {
 		}
 	}
 	return g, nil
+}
+
+// GetObject returns a defensive copy so callers cannot modify an immutable graph.
+func (g *Graph) GetObject(id string) (Object, bool) {
+	o, ok := g.objects[id]
+	if !ok {
+		return Object{}, false
+	}
+	return copyObject(o), true
+}
+
+// Objects returns all objects in snapshot order, without exposing mutable maps.
+func (g *Graph) Objects() []Object {
+	objects := make([]Object, 0, len(g.order))
+	for _, id := range g.order {
+		objects = append(objects, copyObject(g.objects[id]))
+	}
+	return objects
+}
+
+func copyObject(o Object) Object {
+	data, _ := json.Marshal(o) // All stored objects have passed JSON decoding.
+	var result Object
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.UseNumber()
+	_ = decoder.Decode(&result)
+	return result
 }
 
 func (g *Graph) Orientation(scope string, now time.Time) Orientation {

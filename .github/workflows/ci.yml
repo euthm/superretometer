@@ -35,3 +35,75 @@ jobs:
           PYTHONPATH=. python3 examples/minimal/run.py
           PYTHONPATH=. python3 examples/structural_engineering/run.py
           PYTHONPATH=. python3 examples/engineering_model/run.py
+
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache-dependency-path: go/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python reference for differential verification
+        run: pip install -e ".[dev]"
+      - name: Go race tests and vet
+        working-directory: go
+        run: |
+          go test -race ./...
+          go vet ./...
+      - name: Replay unchanged Python contracts against Go
+        run: python scripts/check_go_parity.py --report go-parity.json
+      - name: Build standalone Linux binaries
+        working-directory: go
+        env:
+          REVISION: ${{ github.sha }}
+        run: |
+          mkdir -p ../dist/go
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.revision=$REVISION" -o ../dist/go/superretometer-linux-amd64 ./cmd/superretometer
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w -X main.revision=$REVISION" -o ../dist/go/superretometer-linux-arm64 ./cmd/superretometer
+          cd ../dist/go
+          sha256sum superretometer-* > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: superretometer-go-linux
+          path: dist/go/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: go-python-parity
+          path: go-parity.json
+          if-no-files-found: warn
+
+  go-container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build container
+        env:
+          REVISION: ${{ github.sha }}
+        run: docker build --build-arg REVISION="$REVISION" -t superretometer-ci ./go
+      - name: Verify startup, health and persistent volume permissions
+        run: |
+          docker run --rm superretometer-ci --version
+          docker run -d --name superretometer-smoke -p 127.0.0.1:3010:3010 -v superretometer-ci-data:/data superretometer-ci mcp --state /data/state.json --listen 0.0.0.0:3010 --behind-proxy
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:3010/healthz; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:3010/healthz
+          docker exec superretometer-smoke superretometer --healthcheck
+          docker restart superretometer-smoke
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:3010/healthz; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:3010/healthz
+      - name: Container logs and cleanup
+        if: always()
+        run: |
+          docker logs superretometer-smoke || true
+          docker rm -f superretometer-smoke || true
+          docker volume rm superretometer-ci-data || true

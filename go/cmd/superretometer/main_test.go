@@ -4,26 +4,26 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
-	"os"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/euthm/superretometer/go/internal/graph"
+	"github.com/euthm/superretometer/go/internal/service"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestStreamableHTTP(t *testing.T) {
-	file, err := os.Open("../../testdata/graph.json")
+	svc, err := service.Open(service.Options{SnapshotPath: "../../testdata/graph.json"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
-	g, err := graph.Load(file)
+	defer svc.Close()
+	handler, err := httpHandler(newServer(svc, false), config{}, "", svc)
 	if err != nil {
 		t.Fatal(err)
 	}
-	endpoint := httptest.NewServer(httpHandler(newServer(g)))
+	endpoint := httptest.NewServer(handler)
 	defer endpoint.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -42,8 +42,13 @@ func TestStreamableHTTP(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	slices.Sort(names)
-	if want := []string{"check_warrant", "impact_set", "justification_path", "orientation"}; !slices.Equal(names, want) {
-		t.Fatalf("tools = %v, want %v", names, want)
+	if len(names) != 29 {
+		t.Fatalf("tools = %v, want 29 complete MCP operations", names)
+	}
+	for _, want := range []string{"orientation", "check_warrant", "impact_set", "justification_path", "scan_anti_patterns", "open_tensions", "review_required", "propose_ko", "propose_relation", "propose_evidence", "propose_tension", "execute_proposal", "check_simulation_gates", "check_implementation_gates"} {
+		if !slices.Contains(names, want) {
+			t.Fatalf("missing %s in tools: %v", want, names)
+		}
 	}
 
 	var orientation graph.Orientation

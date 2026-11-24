@@ -11,6 +11,11 @@ The current repository package version is **0.9.0** (see `pyproject.toml`).
 A Git checkout, a published package and a running MCP process can be different
 revisions. [Update and verify a local MCP installation](docs/local-update.md).
 
+For the standalone Go MCP service, see [Go build, startup and deployment](go/README.md).
+It provides the full public MCP interface, durable local state, explicit proposal
+execution, and simulation/implementation gates over stdio or Streamable HTTP.
+Its binary is built separately from the Python package.
+
 For one optional public CH + Harness2 + Julia-boundary smoke test, see
 [the toolchain example](examples/toolchain_pilot/README.md). It uses scripted
 proposals by default; it does not add H2/Julia MCP tools.
